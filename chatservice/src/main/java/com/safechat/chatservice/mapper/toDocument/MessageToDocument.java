@@ -1,0 +1,25 @@
+package com.safechat.chatservice.mapper.toDocument;
+
+import java.time.LocalDateTime;
+
+import com.safechat.chatservice.document.MessageDocument;
+import com.safechat.chatservice.dto.request.create.MessageCreateRequestDto;
+
+public class MessageToDocument {
+
+    public static MessageDocument convert(MessageCreateRequestDto dto) {
+        return MessageDocument.builder()
+                .conversationId(dto.getConversationId())
+                .senderId(dto.getSenderId())
+                .encryptedMessage(dto.getEncryptedMessage())
+                .sendAt(LocalDateTime.now())
+                .isRead(false)
+                .isDelivered(false)
+                .isEdited(false)
+                .expireAt(((dto.getExpirySeconds() != null && dto.getExpirySeconds() > 0))
+                        ? LocalDateTime.now().plusSeconds(dto.getExpirySeconds())
+                        : null)
+                .build();
+
+    }
+}
