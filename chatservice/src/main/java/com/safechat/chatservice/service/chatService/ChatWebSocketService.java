@@ -2,12 +2,17 @@ package com.safechat.chatservice.service.chatService;
 
 import com.safechat.chatservice.document.ConversationDocument;
 import com.safechat.chatservice.document.MessageDocument;
+import com.safechat.chatservice.dto.request.create.ConversationMesssageCreateRequestDto;
 import com.safechat.chatservice.dto.request.create.MessageCreateRequestDto;
+import com.safechat.chatservice.dto.response.ConversationMesssageResponseDto;
+import com.safechat.chatservice.dto.response.ConversationResponseDto;
 import com.safechat.chatservice.dto.response.MessageResponseDto;
 import com.safechat.chatservice.exception.ApplicationException.NotFoundException;
 import com.safechat.chatservice.exception.ApplicationException.ValidationException;
 import com.safechat.chatservice.jwt.JwtUtils;
+import com.safechat.chatservice.mapper.toDocument.ConversationToDocument;
 import com.safechat.chatservice.mapper.toDocument.MessageToDocument;
+import com.safechat.chatservice.mapper.toDto.ConversationToDto;
 import com.safechat.chatservice.mapper.toDto.MessageToDto;
 import com.safechat.chatservice.service.dbService.ConversationDbService;
 import com.safechat.chatservice.service.dbService.MessageDbService;
@@ -16,10 +21,14 @@ import com.safechat.chatservice.utility.OperationExecutor;
 import com.safechat.chatservice.utility.api.ApiMessage;
 import com.safechat.chatservice.utility.encryption.AesEncryption;
 
+import jakarta.validation.Valid;
+
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.query.Criteria;
@@ -415,6 +424,170 @@ public class ChatWebSocketService {
                 Map<String, Object> deleteNotification = new HashMap<>();
                 deleteNotification.put("messageIds", messageIdList);
                 deleteNotification.put("conversationId", conversationId);
+                deleteNotification.put("deleteType", deleteType);
+                deleteNotification.put("count", deletedCount);
+                deleteNotification.put("timestamp", LocalDateTime.now());
+
+                return deleteNotification;
+        }
+
+        public ConversationMesssageResponseDto createConversation(String encryptToken,
+                        ConversationMesssageCreateRequestDto requestDto) {
+                final String METHOD_NAME = "createConversation";
+
+                String decryptToken = aesEncryption.decrypt(encryptToken);
+                String userId = (String) jwtUtils.extractAllClaims(decryptToken).get("uid");
+
+                // Verify the creator in the request matches the authenticated user
+                if (!userId.equals(requestDto.getConversationCreate().getCreatorId())) {
+                        throw new ValidationException("Creator ID does not match authenticated user");
+                }
+
+                // Ensure participants list includes the creator
+                List<String> participants = requestDto.getConversationCreate().getParticipantsId();
+                if (!participants.contains(userId)) {
+                        participants.add(userId);
+                }
+
+                // Check if a conversation already exists between these participants (for
+                // 1-to-1)
+                if (participants.size() >= 2) {
+                        Query existingConversationQuery = new Query();
+                        existingConversationQuery.addCriteria(Criteria.where("participants").all(participants)
+                                        .and("deletedForUsers").nin(userId));
+
+                        OperationExecutor.dbGet(
+                                        () -> conversationDbService.getConversation(existingConversationQuery),
+                                        SERVICE_NAME, METHOD_NAME)
+                                        .ifPresent(c -> {
+                                                throw new ValidationException(ApiMessage.CONVERSATION_ALREADY_EXISTS);
+                                        });
+
+                }
+
+                // Build and save the conversation document
+                ConversationDocument conversation = ConversationToDocument.convert(requestDto.getConversationCreate());
+
+                ConversationDocument savedConversation = OperationExecutor.dbSaveAndReturn(
+                                () -> conversationDbService.save(conversation),
+                                SERVICE_NAME, METHOD_NAME);
+
+                // Build and save the initial message
+                MessageDocument message = MessageDocument.builder()
+                                .conversationId(savedConversation.getId())
+                                .senderId(requestDto.getMessageCreate().getSenderId())
+                                .encryptedMessage(requestDto.getMessageCreate().getEncryptedMessage())
+                                .sendAt(LocalDateTime.now())
+                                .expireAt((requestDto.getMessageCreate().getExpirySeconds() != null
+                                                && requestDto.getMessageCreate().getExpirySeconds() > 0)
+                                                                ? LocalDateTime.now().plusSeconds(requestDto
+                                                                                .getMessageCreate().getExpirySeconds())
+                                                                : null)
+                                .isRead(false)
+                                .isDelivered(false)
+                                .isEdited(false)
+                                .build();
+
+                MessageDocument savedMessage = OperationExecutor.dbSaveAndReturn(
+                                () -> messageDbService.save(message),
+                                SERVICE_NAME, METHOD_NAME);
+
+                // Update conversation with the initial message reference
+                savedConversation.setLastMessageId(savedMessage.getId());
+                savedConversation.setLastMessageAt(savedMessage.getSendAt());
+
+                OperationExecutor.dbSave(
+                                () -> conversationDbService.save(savedConversation),
+                                SERVICE_NAME, METHOD_NAME);
+
+                ConversationMesssageResponseDto response = ConversationMesssageResponseDto.builder()
+                                .conversationResponseDto(ConversationToDto.convert(savedConversation))
+                                .messageResponseDto(MessageToDto.convert(savedMessage))
+                                .unreadCount(0)
+                                .build();
+
+                return response;
+        }
+
+        public Map<String, Object> deleteConversation(String encryptToken, String conversationId, String deleteType)
+                        throws NotFoundException {
+                final String METHOD_NAME = "deleteConversation";
+
+                String decryptToken = aesEncryption.decrypt(encryptToken);
+                String userId = (String) jwtUtils.extractAllClaims(decryptToken).get("uid");
+
+                // Fetch conversation and verify not already deleted for this user
+                Query conversationQuery = new Query();
+                conversationQuery.addCriteria(Criteria.where("id").is(conversationId)
+                                .and("participants").in(userId)
+                                .and("deletedForUsers").nin(userId));
+
+                ConversationDocument conversation = OperationExecutor.dbGet(
+                                () -> conversationDbService.getConversation(conversationQuery),
+                                SERVICE_NAME, METHOD_NAME)
+                                .orElseThrow(() -> new NotFoundException(ApiMessage.CONVERSATION_NOT_FOUND));
+
+                if (DeleteType.EVERYONE.equals(deleteType)) {
+                        // Only creator can delete for everyone
+                        if (!conversation.getCreatorId().equals(userId)) {
+                                throw new ValidationException("Only creator can delete for everyone");
+                        }
+
+                        // Hard delete all messages in conversation
+                        Query deleteMessagesQuery = new Query();
+                        deleteMessagesQuery.addCriteria(Criteria.where("conversationId").is(conversationId));
+                        OperationExecutor.dbRemove(
+                                        () -> messageDbService.delete(deleteMessagesQuery),
+                                        SERVICE_NAME, METHOD_NAME);
+
+                        // Hard delete conversation
+                        Query deleteConversationQuery = new Query();
+                        deleteConversationQuery.addCriteria(Criteria.where("id").is(conversationId));
+                        OperationExecutor.dbRemove(
+                                        () -> conversationDbService.delete(deleteConversationQuery),
+                                        SERVICE_NAME, METHOD_NAME);
+
+                } else {
+                        // DELETE_FOR_ME - soft delete, just add to deletedForUsers
+                        conversation.getDeletedForUsers().add(userId);
+
+                        OperationExecutor.dbSave(
+                                        () -> conversationDbService.save(conversation),
+                                        SERVICE_NAME, METHOD_NAME);
+                }
+
+                Map<String, Object> deleteNotification = new HashMap<>();
+                deleteNotification.put("conversationId", conversationId);
+                deleteNotification.put("deleteType", deleteType);
+                deleteNotification.put("timestamp", LocalDateTime.now());
+
+                return deleteNotification;
+        }
+
+        public Map<String, Object> deleteConversations(String encryptToken, List<String> conversationIdList,
+                        String deleteType) throws NotFoundException {
+                final String METHOD_NAME = "deleteConversations";
+
+                String decryptToken = aesEncryption.decrypt(encryptToken);
+
+                if (conversationIdList == null || conversationIdList.isEmpty()) {
+                        throw new ValidationException("Conversation IDs list cannot be empty");
+                }
+
+                int deletedCount = 0;
+
+                for (String conversationId : conversationIdList) {
+                        try {
+                                deleteConversation(encryptToken, conversationId, deleteType);
+                                deletedCount++;
+                        } catch (NotFoundException e) {
+                                // Skip if conversation not found, continue with others
+                                continue;
+                        }
+                }
+
+                Map<String, Object> deleteNotification = new HashMap<>();
+                deleteNotification.put("conversationIds", conversationIdList);
                 deleteNotification.put("deleteType", deleteType);
                 deleteNotification.put("count", deletedCount);
                 deleteNotification.put("timestamp", LocalDateTime.now());

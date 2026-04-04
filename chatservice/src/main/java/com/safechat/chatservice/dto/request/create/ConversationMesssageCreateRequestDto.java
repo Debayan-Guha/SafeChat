@@ -42,7 +42,6 @@ public class ConversationMesssageCreateRequestDto {
         @NotBlank
         private String encryptedMessage;
 
-        @NotBlank
-        private LocalDateTime expireAt;
+        private Integer expirySeconds;
     }
 }

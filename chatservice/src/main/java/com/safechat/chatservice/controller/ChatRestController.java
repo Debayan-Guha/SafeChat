@@ -3,15 +3,12 @@ package com.safechat.chatservice.controller;
 import com.safechat.chatservice.dto.response.ConversationMesssageResponseDto;
 import com.safechat.chatservice.dto.response.ConversationResponseDto;
 import com.safechat.chatservice.dto.response.MessageResponseDto;
-import com.safechat.chatservice.exception.ApplicationException.AlreadyExistsException;
 import com.safechat.chatservice.exception.ApplicationException.NotFoundException;
 import com.safechat.chatservice.exception.ApplicationException.ValidationException;
 import com.safechat.chatservice.service.chatService.ChatReadService;
-import com.safechat.chatservice.service.chatService.ChatWriteService;
 import com.safechat.chatservice.utility.api.ApiMessage;
 import com.safechat.chatservice.utility.api.ApiResponseFormatter;
 import com.safechat.chatservice.utility.api.PaginationData;
-import com.safechat.chatservice.utility.Enumeration.DeleteType;
 import com.safechat.chatservice.utility.Enumeration.SortDirection;
 
 import org.springframework.format.annotation.DateTimeFormat;
@@ -29,11 +26,9 @@ import java.util.Map;
 public class ChatRestController {
 
         private final ChatReadService chatReadService;
-        private final ChatWriteService chatWriteService;
 
-        public ChatRestController(ChatReadService chatReadService, ChatWriteService chatWriteService) {
+        public ChatRestController(ChatReadService chatReadService) {
                 this.chatReadService = chatReadService;
-                this.chatWriteService = chatWriteService;
         }
 
         @GetMapping("/conversations")
@@ -77,25 +72,6 @@ public class ChatRestController {
                                 response));
         }
 
-        @DeleteMapping("/conversations/{conversationId}")
-        public ResponseEntity<ApiResponseFormatter<Void>> deleteConversation(
-                        @PathVariable(required = true) String conversationId,
-                        @RequestParam(required = true) String deleteType)
-                        throws NotFoundException, AlreadyExistsException {
-
-                String encryptToken = (String) SecurityContextHolder.getContext()
-                                .getAuthentication().getCredentials();
-
-                if (!DeleteType.isValid(deleteType)) {
-                        throw new ValidationException("Invalid delete type");
-                }
-                chatWriteService.deleteConversation(encryptToken, conversationId, deleteType);
-
-                return ResponseEntity.ok(ApiResponseFormatter.formatter(
-                                HttpStatus.OK.value(),
-                                ApiMessage.CONVERSATION_DELETED));
-        }
-
         @GetMapping("/conversations/{conversationId}/messages")
         public ResponseEntity<ApiResponseFormatter<List<MessageResponseDto>>> getConversationMessages(
                         @PathVariable(required = true) String conversationId,
@@ -108,8 +84,8 @@ public class ChatRestController {
                         throw new ValidationException(ApiMessage.PAGE_VALIDATION_ERROR);
                 }
 
-                String sortBy="sendAt";
-                String sortDir="desc";
+                String sortBy = "sendAt";
+                String sortDir = "desc";
 
                 if (!SortDirection.isValid(sortDir)) {
                         throw new ValidationException("Invalid sort direction");
@@ -121,9 +97,9 @@ public class ChatRestController {
                 Map<String, Object> result;
                 if (beforeDate != null) {
                         result = chatReadService.getMessagesBeforeDate(encryptToken, conversationId, beforeDate, sortBy,
-                                        sortDir,page,size);
+                                        sortDir, page, size);
                 } else {
-                        result = chatReadService.getMessages(encryptToken, conversationId, sortBy, sortDir,page,size);
+                        result = chatReadService.getMessages(encryptToken, conversationId, sortBy, sortDir, page, size);
                 }
 
                 List<MessageResponseDto> data = (List<MessageResponseDto>) result.get("data");

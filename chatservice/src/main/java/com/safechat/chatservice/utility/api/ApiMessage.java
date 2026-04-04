@@ -5,6 +5,7 @@ public interface ApiMessage {
     String CONVERSATION_DELETED = "Conversation deleted successfully";
     String CONVERSATION_FOUND = "Conversation found successfully";
     String CONVERSATION_NOT_FOUND="Conversation not found";
+    String CONVERSATION_ALREADY_EXISTS="Conversation already exists";
 
     String MESSAGE_EDITED="Message edited successfully";
     String MESSAGE_FOUND="Messages found successfully";

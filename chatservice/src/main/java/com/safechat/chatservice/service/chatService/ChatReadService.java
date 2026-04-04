@@ -142,7 +142,7 @@ public class ChatReadService {
                 String userId = (String) jwtUtils.extractAllClaims(decryptToken).get("uid");
 
                 Query query = Query.query(
-                                Criteria.where("_id").is(conversationId)
+                                Criteria.where("id").is(conversationId)
                                                 .and("participants").in(userId)
                                                 .and("deletedForUsers").nin(userId));
 
@@ -168,7 +168,7 @@ public class ChatReadService {
                 String userId = (String) jwtUtils.extractAllClaims(decryptToken).get("uid");
 
                 Query query1 = new Query();
-                query1.addCriteria(Criteria.where("_id").is(conversationId)
+                query1.addCriteria(Criteria.where("id").is(conversationId)
                                 .and("participants").in(userId)
                                 .and("deletedForUsers").nin(userId));
 
@@ -232,7 +232,7 @@ public class ChatReadService {
                 String userId = (String) jwtUtils.extractAllClaims(decryptToken).get("uid");
 
                 Query query1 = new Query();
-                query1.addCriteria(Criteria.where("_id").is(conversationId)
+                query1.addCriteria(Criteria.where("id").is(conversationId)
                                 .and("participants").in(userId)
                                 .and("deletedForUsers").nin(userId));
 

@@ -1,10 +1,14 @@
 package com.safechat.chatservice.controller;
 
+import com.safechat.chatservice.dto.request.create.ConversationMesssageCreateRequestDto;
 import com.safechat.chatservice.dto.request.create.MessageCreateRequestDto;
 import com.safechat.chatservice.dto.request.update.MessageUpdateRequestDto;
+import com.safechat.chatservice.dto.response.ConversationMesssageResponseDto;
 import com.safechat.chatservice.dto.response.MessageResponseDto;
+import com.safechat.chatservice.exception.ApplicationException.AlreadyExistsException;
 import com.safechat.chatservice.exception.ApplicationException.NotFoundException;
 import com.safechat.chatservice.exception.ApplicationException.ValidationException;
+import com.safechat.chatservice.kafka.ChatKafkaProducer;
 import com.safechat.chatservice.service.chatService.ChatWebSocketService;
 import com.safechat.chatservice.utility.Enumeration.DeleteType;
 
@@ -12,7 +16,6 @@ import jakarta.validation.Valid;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Controller;
 
@@ -23,15 +26,28 @@ import java.util.Map;
 public class ChatWebSocketController {
 
         private final ChatWebSocketService chatWebSocketService;
-        private final SimpMessagingTemplate messagingTemplate;
+        private final ChatKafkaProducer chatKafkaProducer;
 
         public ChatWebSocketController(ChatWebSocketService chatWebSocketService,
-                        SimpMessagingTemplate messagingTemplate) {
+                        ChatKafkaProducer chatKafkaProducer) {
                 this.chatWebSocketService = chatWebSocketService;
-                this.messagingTemplate = messagingTemplate;
+                this.chatKafkaProducer = chatKafkaProducer;
         }
 
-        @MessageMapping("/chat.send/{conversationId}")
+        @MessageMapping("/chat.conversation.create")
+        public void createConversation(@Payload @Valid ConversationMesssageCreateRequestDto requestDto)
+                        throws NotFoundException, AlreadyExistsException {
+
+                String encryptToken = (String) SecurityContextHolder.getContext()
+                                .getAuthentication().getCredentials();
+
+                ConversationMesssageResponseDto response = chatWebSocketService.createConversation(encryptToken,
+                                requestDto);
+
+                chatKafkaProducer.publishConversationCreated(response);
+        }
+
+        @MessageMapping("/chat.message.normal.send/{conversationId}")
         public void sendMessage(
                         @DestinationVariable String conversationId,
                         @Payload @Valid MessageCreateRequestDto requestDto) throws NotFoundException {
@@ -42,10 +58,10 @@ public class ChatWebSocketController {
                 MessageResponseDto response = chatWebSocketService.sendMessage(encryptToken, conversationId,
                                 requestDto);
 
-                messagingTemplate.convertAndSend("/topic/messages/" + conversationId, response);
+                chatKafkaProducer.publishMessage(response);
         }
 
-        @MessageMapping("/chat.privacy/{conversationId}")
+        @MessageMapping("/chat.message.privacy.send/{conversationId}")
         public void sendPrivacyMessage(
                         @DestinationVariable String conversationId,
                         @Payload @Valid MessageCreateRequestDto requestDto) throws NotFoundException {
@@ -56,10 +72,10 @@ public class ChatWebSocketController {
                 MessageResponseDto response = chatWebSocketService.sendPrivacyMessage(encryptToken, conversationId,
                                 requestDto);
 
-                messagingTemplate.convertAndSend("/topic/messages/" + conversationId, response);
+                chatKafkaProducer.publishPrivacyMessage(response);
         }
 
-        @MessageMapping("/chat.delivered/{messageId}")
+        @MessageMapping("/chat.message.delivered/{messageId}")
         public void markAsDelivered(
                         @DestinationVariable String messageId) throws NotFoundException {
 
@@ -68,10 +84,10 @@ public class ChatWebSocketController {
 
                 MessageResponseDto response = chatWebSocketService.markMessageAsDelivered(encryptToken, messageId);
 
-                messagingTemplate.convertAndSend("/topic/delivery/" + response.getConversationId(), response);
+                chatKafkaProducer.publishDeliveryStatus(response);
         }
 
-        @MessageMapping("/chat.read/{messageId}")
+        @MessageMapping("/chat.message.read/{messageId}")
         public void markAsRead(
                         @DestinationVariable String messageId) throws NotFoundException {
 
@@ -80,10 +96,10 @@ public class ChatWebSocketController {
 
                 MessageResponseDto response = chatWebSocketService.markMessageAsRead(encryptToken, messageId);
 
-                messagingTemplate.convertAndSend("/topic/delivery/" + response.getConversationId(), response);
+                chatKafkaProducer.publishDeliveryStatus(response);
         }
 
-        @MessageMapping("/chat.typing/{conversationId}")
+        @MessageMapping("/chat.message.typing/{conversationId}")
         public void typingIndicator(
                         @DestinationVariable String conversationId,
                         @Payload Boolean isTyping) throws NotFoundException {
@@ -94,10 +110,10 @@ public class ChatWebSocketController {
                 Map<String, Object> response = chatWebSocketService.typingIndicator(encryptToken, conversationId,
                                 isTyping);
 
-                messagingTemplate.convertAndSend("/topic/typing/" + conversationId, (Object) response);
+                chatKafkaProducer.publishTypingStatus(response);
         }
 
-        @MessageMapping("/chat.edit/{messageId}")
+        @MessageMapping("/chat.message.edit/{messageId}")
         public void editMessage(
                         @DestinationVariable String messageId,
                         @Payload @Valid MessageUpdateRequestDto requestDto) throws NotFoundException {
@@ -108,10 +124,10 @@ public class ChatWebSocketController {
                 MessageResponseDto response = chatWebSocketService.editMessage(encryptToken, messageId,
                                 requestDto.getEncryptedMessage());
 
-                messagingTemplate.convertAndSend("/topic/messages/" + response.getConversationId(), response);
+                chatKafkaProducer.publishMessageEdit(response);
         }
 
-        @MessageMapping("/chat.delete/{messageId}")
+        @MessageMapping("/chat.message.delete/{messageId}")
         public void deleteMessage(
                         @DestinationVariable String messageId, @Payload String deleteType) throws NotFoundException {
 
@@ -125,12 +141,13 @@ public class ChatWebSocketController {
                 Map<String, Object> response = chatWebSocketService.deleteMessage(encryptToken, messageId, deleteType);
 
                 if (DeleteType.EVERYONE.equals(deleteType)) {
-                        messagingTemplate.convertAndSend("/topic/deletes/" + response.get("conversationId"),
-                                        (Object) response);
+
+                        chatKafkaProducer.publishMessageDeletion(response);
                 }
         }
 
-        @MessageMapping("/chat.delete/batch")
+        @SuppressWarnings("unchecked")
+        @MessageMapping("/chat.message.delete/batch")
         public void deleteMessages(
                         @Payload Map<String, Object> payload) throws NotFoundException {
 
@@ -148,8 +165,54 @@ public class ChatWebSocketController {
                                 deleteType);
 
                 if (DeleteType.EVERYONE.equals(deleteType)) {
-                        messagingTemplate.convertAndSend("/topic/deletes/" + response.get("conversationId"),
-                                        (Object) response);
+
+                        chatKafkaProducer.publishMessageDeletion(response);
+                }
+        }
+
+        @MessageMapping("/chat.conversation.delete/{conversationId}")
+        public void deleteConversation(
+                        @DestinationVariable String conversationId,
+                        @Payload String deleteType) throws NotFoundException {
+
+                String encryptToken = (String) SecurityContextHolder.getContext()
+                                .getAuthentication().getCredentials();
+
+                if (!DeleteType.isValid(deleteType)) {
+                        throw new ValidationException("Invalid delete type");
+                }
+
+                Map<String, Object> response = chatWebSocketService.deleteConversation(encryptToken, conversationId,
+                                deleteType);
+
+                if (DeleteType.EVERYONE.equals(deleteType)) {
+
+                        chatKafkaProducer.publishConversationDeleted(response);
+                }
+
+        }
+
+        @SuppressWarnings("unchecked")
+        @MessageMapping("/chat.conversation.delete/batch")
+        public void deleteConversations(
+                        @Payload Map<String, Object> payload) throws NotFoundException {
+
+                String encryptToken = (String) SecurityContextHolder.getContext()
+                                .getAuthentication().getCredentials();
+
+                List<String> conversationIdList = (List<String>) payload.get("conversationIdList");
+                String deleteType = (String) payload.get("deleteType");
+
+                if (!DeleteType.isValid(deleteType)) {
+                        throw new ValidationException("Invalid delete type");
+                }
+
+                Map<String, Object> response = chatWebSocketService.deleteConversations(encryptToken,
+                                conversationIdList,
+                                deleteType);
+
+                if (DeleteType.EVERYONE.equals(deleteType)) {
+                        chatKafkaProducer.publishConversationDeleted(response);
                 }
         }
 }
