@@ -5,7 +5,6 @@ import com.safechat.chatservice.document.MessageDocument;
 import com.safechat.chatservice.dto.request.create.ConversationMesssageCreateRequestDto;
 import com.safechat.chatservice.dto.request.create.MessageCreateRequestDto;
 import com.safechat.chatservice.dto.response.ConversationMesssageResponseDto;
-import com.safechat.chatservice.dto.response.ConversationResponseDto;
 import com.safechat.chatservice.dto.response.MessageResponseDto;
 import com.safechat.chatservice.exception.ApplicationException.NotFoundException;
 import com.safechat.chatservice.exception.ApplicationException.ValidationException;
@@ -21,15 +20,10 @@ import com.safechat.chatservice.utility.OperationExecutor;
 import com.safechat.chatservice.utility.api.ApiMessage;
 import com.safechat.chatservice.utility.encryption.AesEncryption;
 
-import jakarta.validation.Valid;
-
 import java.time.LocalDateTime;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
@@ -129,7 +123,6 @@ public class ChatWebSocketService {
                                 .senderId(userId)
                                 .encryptedMessage(requestDto.getEncryptedMessage())
                                 .sendAt(LocalDateTime.now())
-                                .isRead(false)
                                 .isDelivered(false)
                                 .isEdited(false)
                                 .expireAt(((requestDto.getExpirySeconds() != null && requestDto.getExpirySeconds() > 0))
@@ -180,7 +173,6 @@ public class ChatWebSocketService {
 
                 // Mark as delivered
                 message.setIsDelivered(true);
-                message.setReceivedAt(LocalDateTime.now());
 
                 MessageDocument savedMessage = OperationExecutor.dbSaveAndReturn(
                                 () -> messageDbService.save(message),
@@ -218,9 +210,7 @@ public class ChatWebSocketService {
                                 .orElseThrow(() -> new NotFoundException(ApiMessage.CONVERSATION_NOT_FOUND));
 
                 // Read implies delivered
-                message.setIsRead(true);
-                message.setIsDelivered(true);
-                message.setReceivedAt(LocalDateTime.now());
+                message.getReadBy().put(userId, LocalDateTime.now());
 
                 MessageDocument savedMessage = OperationExecutor.dbSaveAndReturn(
                                 () -> messageDbService.save(message),
@@ -483,7 +473,7 @@ public class ChatWebSocketService {
                                                                 ? LocalDateTime.now().plusSeconds(requestDto
                                                                                 .getMessageCreate().getExpirySeconds())
                                                                 : null)
-                                .isRead(false)
+
                                 .isDelivered(false)
                                 .isEdited(false)
                                 .build();

@@ -1,5 +1,7 @@
 package com.safechat.chatservice.mapper.toDto;
 
+import java.util.Collections;
+
 import com.safechat.chatservice.document.MessageDocument;
 import com.safechat.chatservice.dto.response.MessageResponseDto;
 
@@ -11,9 +13,8 @@ public class MessageToDto {
                 .conversationId(document.getConversationId())
                 .senderId(document.getSenderId())
                 .sendAt(document.getSendAt())
-                .receivedAt(document.getReceivedAt())
                 .encryptedMessage(document.getEncryptedMessage())
-                .isRead(document.getIsRead())
+                .readBy(document.getReadBy()!=null && !document.getReadBy().isEmpty()? document.getReadBy():Collections.emptyMap())
                 .isDelivered(document.getIsDelivered())
                 .isEdited(document.getIsEdited())
                 .build();

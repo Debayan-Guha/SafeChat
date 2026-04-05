@@ -1,7 +1,5 @@
 package com.safechat.chatservice.jwt;
 
-import java.util.Date;
-
 import javax.crypto.SecretKey;
 
 import org.springframework.beans.factory.annotation.Value;

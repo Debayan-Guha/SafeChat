@@ -1,6 +1,7 @@
 package com.safechat.chatservice.dto.response;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 
 import lombok.Builder;
 import lombok.Getter;
@@ -15,10 +16,9 @@ public class MessageResponseDto {
     private String conversationId;
     private String senderId;
     private LocalDateTime sendAt;
-    private LocalDateTime receivedAt;
     private String encryptedMessage;
 
-    private Boolean isRead;
+    private Map<String,LocalDateTime> readBy;
     private Boolean isDelivered;
     private Boolean isEdited;
 
