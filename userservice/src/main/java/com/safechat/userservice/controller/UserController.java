@@ -60,8 +60,9 @@ public class UserController {
         /**
          * Check if display name already exists
          * GET /api/v1/users/check-displayname?displayName=john_doe
-         * @throws AlreadyExistsException 
-         * @throws NotFoundException 
+         * 
+         * @throws AlreadyExistsException
+         * @throws NotFoundException
          */
         @GetMapping("/check-displayname")
         public ResponseEntity<ApiResponseFormatter<Void>> checkDisplayNameExists(
@@ -76,8 +77,9 @@ public class UserController {
 
         /**
          * Check if email already exists
-         * @throws AlreadyExistsException 
-         * @throws NotFoundException 
+         * 
+         * @throws AlreadyExistsException
+         * @throws NotFoundException
          */
         @GetMapping("/check-email")
         public ResponseEntity<ApiResponseFormatter<Void>> checkEmailExists(
@@ -88,6 +90,24 @@ public class UserController {
                 return ResponseEntity.ok(ApiResponseFormatter.formatter(
                                 HttpStatus.OK.value(),
                                 ApiMessage.EMAIL_NOT_REGISTERED));
+        }
+
+        /**
+         * Get user by ID (returns full user details including display name and public
+         * key)
+         * GET /api/v1/users/{userId}
+         */
+        @GetMapping("/{userId}")
+        public ResponseEntity<ApiResponseFormatter<UserResponseDto>> getUserById(
+                        @PathVariable String userId)
+                        throws NotFoundException {
+
+                UserResponseDto response = userReadService.getUserById(userId);
+
+                return ResponseEntity.ok(ApiResponseFormatter.formatter(
+                                HttpStatus.OK.value(),
+                                ApiMessage.USER_FOUND,
+                                response));
         }
 
         /**
@@ -132,8 +152,6 @@ public class UserController {
                                 response));
         }
 
-       
-
         /**
          * Search users by phone/email/displayName
          * GET /api/v1/users/search?query=john&page=0&size=20
@@ -161,8 +179,6 @@ public class UserController {
         }
 
         // ==================== KEY MANAGEMENT ====================
-
-        // ==================== PRIVATE KEY VERIFICATION ====================
 
         /**
          * Verify private key
@@ -200,25 +216,7 @@ public class UserController {
                 userWriteService.updateKeys(encryptToken, requestDto);
 
                 return ResponseEntity.ok(ApiResponseFormatter.formatter(
-                                HttpStatus.OK.value(),
-                                ApiMessage.PUBLIC_KEY_UPDATED));
-        }
-
-        /**
-         * Get user's public key
-         * GET /api/v1/users/{userId}/public-key
-         */
-        @GetMapping("/keys/{userId}/public-key")
-        public ResponseEntity<ApiResponseFormatter<String>> getPublicKey(
-                        @PathVariable String userId)
-                        throws NotFoundException {
-
-                String response = userReadService.getPublicKey(userId);
-
-                return ResponseEntity.ok(ApiResponseFormatter.formatter(
-                                HttpStatus.OK.value(),
-                                ApiMessage.PUBLIC_KEY_FOUND,
-                                response));
+                                HttpStatus.OK.value(), ApiMessage.KEYS_UPDATED));
         }
 
         // ==================== ACCOUNT DELETION ====================

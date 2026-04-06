@@ -111,8 +111,8 @@ public class UserReadService {
         return result;
     }
 
-    public String getPublicKey(String userId) throws NotFoundException {
-        final String METHOD_NAME = "getPublicKey";
+    public UserResponseDto getUserById(String userId) throws NotFoundException {
+        final String METHOD_NAME = "getUserById";
 
         Specification<UserEntity> spec = (root, query, cb) -> cb.equal(root.get("id"), userId);
 
@@ -120,6 +120,7 @@ public class UserReadService {
                 .dbGet(() -> userDbService.getUser(spec), SERVICE_NAME, METHOD_NAME)
                 .orElseThrow(() -> new NotFoundException(ApiMessage.USER_NOT_FOUND));
 
-        return userEntity.getPublicKey();
+        return UserResponseDto.builder().displayName(userEntity.getDisplayName()).publicKey(userEntity.getPublicKey())
+                .build();
     }
 }

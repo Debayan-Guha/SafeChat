@@ -31,8 +31,6 @@ spring:
 # JWT Configuration
 jwt:
   secretKey: your-256-bit-secret-key-for-jwt-please-change-in-production
-  expirationTime: 86400000
-  issuer: SAFECHAT
 
 # Encryption Configuration
 encryption:
@@ -40,5 +38,5 @@ encryption:
 
 # Server Configuration
 server:
-  port: 8080
+  port: 8081
 
