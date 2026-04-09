@@ -18,8 +18,16 @@ import com.safechat.userservice.utility.api.ApiResponseFormatter;
 
 import jakarta.validation.Valid;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
 @RestController
-@RequestMapping("/api/v1/users/auth")
+@RequestMapping("/api/v1/userservice/auth")
+@Tag(name = "Authentication", description = "APIs for user and admin authentication, login and logout operations")
 public class AuthController {
 
     private final AuthService authService;
@@ -28,6 +36,13 @@ public class AuthController {
         this.authService = authService;
     }
 
+    @Operation(summary = "User login", description = "Authenticates a user using email/displayName and password. Returns encrypted JWT token on success.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Login successful", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class))),
+            @ApiResponse(responseCode = "400", description = "Email or DisplayName is required", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class))),
+            @ApiResponse(responseCode = "401", description = "Incorrect password", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class))),
+            @ApiResponse(responseCode = "404", description = "User not found", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class)))
+    })
     @PostMapping("/login")
     public ResponseEntity<ApiResponseFormatter<String>> login(@Valid @RequestBody UserLoginDto credentials)
             throws NotFoundException, CredentialMisMatchException {
@@ -41,6 +56,10 @@ public class AuthController {
                         encryptedToken));
     }
 
+    @Operation(summary = "User logout", description = "Invalidates the user's JWT token. Token will no longer be accepted for authenticated requests.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Logout successful", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class)))
+    })
     @PostMapping("/logout")
     public ResponseEntity<ApiResponseFormatter<Void>> logout() {
 
@@ -53,6 +72,13 @@ public class AuthController {
                         ApiMessage.USER_LOGOUT_SUCCESS));
     }
 
+    @Operation(summary = "Admin login", description = "Authenticates an admin using email and password. Returns encrypted JWT token with ADMIN role on success.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Admin login successful", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class))),
+            @ApiResponse(responseCode = "400", description = "Email is required", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class))),
+            @ApiResponse(responseCode = "401", description = "Incorrect password", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class))),
+            @ApiResponse(responseCode = "404", description = "Admin not found", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class)))
+    })
     @PostMapping("/admin/login")
     public ResponseEntity<ApiResponseFormatter<String>> adminLogin(@Valid @RequestBody AdminLoginDto credentials)
             throws NotFoundException, CredentialMisMatchException {
@@ -66,6 +92,10 @@ public class AuthController {
                         encryptedToken));
     }
 
+    @Operation(summary = "Admin logout", description = "Invalidates the admin's JWT token. Token will no longer be accepted for admin authenticated requests.")
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Admin logout successful", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class)))
+    })
     @PostMapping("/admin/logout")
     public ResponseEntity<ApiResponseFormatter<Void>> adminLogout() {
 
@@ -77,5 +107,4 @@ public class AuthController {
                         HttpStatus.OK.value(),
                         "Admin logout successfully"));
     }
-
 }

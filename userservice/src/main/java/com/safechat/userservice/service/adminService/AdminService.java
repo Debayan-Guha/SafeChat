@@ -16,7 +16,6 @@ import com.safechat.userservice.service.dbService.AdminDbService;
 import com.safechat.userservice.utility.OperationExecutor;
 import com.safechat.userservice.utility.encryption.BcryptEncoder;
 
-import jakarta.persistence.criteria.Predicate;
 import jakarta.transaction.Transactional;
 
 @Service

@@ -35,13 +35,13 @@ public class SecurityConfig {
                                 "/api/v1/users/auth/login",
                                 "/api/v1/users/auth/admin/login")
                         .permitAll()
-                        
+
                         // Admin only endpoints
                         .requestMatchers(
                                 "/api/v1/users/admin/**",
                                 "/api/v1/users/auth/admin/logout")
                         .hasRole("ADMIN")
-                        
+
                         // User endpoints (authenticated)
                         .requestMatchers(
                                 "/api/v1/users/profile",
@@ -53,7 +53,14 @@ public class SecurityConfig {
                                 "/api/v1/users/account/delete-cancel",
                                 "/api/v1/users/auth/logout")
                         .authenticated()
-                        
+
+                        .requestMatchers(
+                                "/swagger-ui/**",
+                                "/swagger-ui.html",
+                                "/api-docs/**",
+                                "/v3/api-docs/**")
+                        .permitAll()
+
                         // Any other request requires authentication
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

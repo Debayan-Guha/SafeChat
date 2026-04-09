@@ -16,6 +16,7 @@ import com.safechat.userservice.exception.ApplicationException.ValidationExcepti
 import com.safechat.userservice.service.adminService.AdminService;
 import com.safechat.userservice.service.userService.UserReadService;
 import com.safechat.userservice.service.userService.UserWriteService;
+import com.safechat.userservice.utility.UrlEncoderUtil;
 import com.safechat.userservice.utility.Enumeration.Status;
 import com.safechat.userservice.utility.api.ApiMessage;
 import com.safechat.userservice.utility.api.ApiResponseFormatter;
@@ -23,25 +24,36 @@ import com.safechat.userservice.utility.api.PaginationData;
 
 import jakarta.validation.Valid;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
 @RestController
-@RequestMapping("/api/v1/users/admin")
+@RequestMapping("/api/v1/userservice/admin")
+@Tag(name = "Admin Management", description = "APIs for admin operations including user management, block/unblock, and admin account management")
 public class AdminController {
 
         private final UserReadService userReadService;
         private final UserWriteService userWriteService;
         private final AdminService adminService;
 
-        public AdminController(UserReadService userReadService, UserWriteService userWriteService,AdminService adminService) {
+        public AdminController(UserReadService userReadService, UserWriteService userWriteService,
+                        AdminService adminService) {
                 this.userReadService = userReadService;
                 this.userWriteService = userWriteService;
-                this.adminService=adminService;
+                this.adminService = adminService;
         }
 
-        /**
-         * Create new admin account
-         * POST /api/v1/admin/accounts
-         * Body: { name, email, password, description }
-         */
+        @Operation(summary = "Create admin account", description = "Creates a new admin account. Only existing admins can perform this operation.")
+        @ApiResponses(value = {
+                        @ApiResponse(responseCode = "201", description = "Admin account created", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class))),
+                        @ApiResponse(responseCode = "400", description = "Validation failed", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class))),
+                        @ApiResponse(responseCode = "409", description = "Admin already exists with this email", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class)))
+        })
         @PostMapping("/accounts")
         public ResponseEntity<ApiResponseFormatter<Void>> createAdmin(
                         @RequestBody @Valid AdminCreateDto requestDto)
@@ -55,75 +67,80 @@ public class AdminController {
                                                 ApiMessage.ADMIN_CREATED));
         }
 
-        /**
-         * Update admin account
-         * PUT /api/v1/admin/accounts/{adminId}
-         * Body: { name, description, password }
-         */
+        @Operation(summary = "Update admin account", description = "Updates an existing admin account. Only existing admins can perform this operation.")
+        @ApiResponses(value = {
+                        @ApiResponse(responseCode = "200", description = "Admin account updated", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class))),
+                        @ApiResponse(responseCode = "400", description = "Validation failed", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class))),
+                        @ApiResponse(responseCode = "404", description = "Admin not found", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class)))
+        })
         @PutMapping("/accounts/{adminId}")
         public ResponseEntity<ApiResponseFormatter<Void>> updateAdmin(
-                        @PathVariable String adminId,
+                        @Parameter(description = "Admin ID", required = true) @PathVariable String adminId,
                         @RequestBody @Valid AdminUpdateDto requestDto)
                         throws NotFoundException {
 
-                adminService.updateAdmin(adminId, requestDto);
+                String decodedAdminId = UrlEncoderUtil.decode(adminId);
+                adminService.updateAdmin(decodedAdminId, requestDto);
 
                 return ResponseEntity.ok(ApiResponseFormatter.formatter(
                                 HttpStatus.OK.value(),
                                 ApiMessage.ADMIN_UPDATED));
         }
 
-        // ==================== BLOCK MANAGEMENT ====================
-
-        /**
-         * Block user
-         * POST /api/v1/admin/users/block/{userIdToBlock}
-         */
+        @Operation(summary = "Block user", description = "Blocks a user account. Blocked users cannot log in or use the application.")
+        @ApiResponses(value = {
+                        @ApiResponse(responseCode = "200", description = "User blocked", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class))),
+                        @ApiResponse(responseCode = "404", description = "User not found", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class))),
+                        @ApiResponse(responseCode = "409", description = "User already blocked", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class)))
+        })
         @PostMapping("/users/block/{userIdToBlock}")
         public ResponseEntity<ApiResponseFormatter<Void>> blockUser(
-                        @PathVariable String userIdToBlock)
+                        @Parameter(description = "ID of the user to block", required = true) @PathVariable String userIdToBlock)
                         throws NotFoundException, AlreadyExistsException {
 
-                userWriteService.blockUserByAdmin(userIdToBlock);
+                String decodedUserId = UrlEncoderUtil.decode(userIdToBlock);
+                userWriteService.blockUserByAdmin(decodedUserId);
 
                 return ResponseEntity.ok(ApiResponseFormatter.formatter(
                                 HttpStatus.OK.value(),
                                 ApiMessage.USER_BLOCKED));
         }
 
-        /**
-         * Unblock user
-         * DELETE /api/v1/admin/users/block/{userIdToUnblock}
-         */
+        @Operation(summary = "Unblock user", description = "Unblocks a previously blocked user account.")
+        @ApiResponses(value = {
+                        @ApiResponse(responseCode = "200", description = "User unblocked", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class))),
+                        @ApiResponse(responseCode = "400", description = "User is not blocked", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class))),
+                        @ApiResponse(responseCode = "404", description = "User not found", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class)))
+        })
         @DeleteMapping("/users/block/{userIdToUnblock}")
         public ResponseEntity<ApiResponseFormatter<Void>> unblockUser(
-                        @PathVariable String userIdToUnblock)
+                        @Parameter(description = "ID of the user to unblock", required = true) @PathVariable String userIdToUnblock)
                         throws NotFoundException {
 
-                userWriteService.unblockUserByAdmin(userIdToUnblock);
+                String decodedUserId = UrlEncoderUtil.decode(userIdToUnblock);
+                userWriteService.unblockUserByAdmin(decodedUserId);
 
                 return ResponseEntity.ok(ApiResponseFormatter.formatter(
                                 HttpStatus.OK.value(),
                                 ApiMessage.USER_UNBLOCKED));
         }
 
-        // ==================== USER MANAGEMENT ====================
-
-        /**
-         * Get all users (admin only)
-         * GET /api/v1/admin/users?page=0&size=20&status=ACTIVE
-         */
+        @Operation(summary = "Get all users", description = "Retrieves a paginated list of all users. Can filter by status.")
+        @ApiResponses(value = {
+                        @ApiResponse(responseCode = "200", description = "Users retrieved", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class))),
+                        @ApiResponse(responseCode = "400", description = "Invalid pagination parameters or status", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class)))
+        })
         @GetMapping("/users")
         public ResponseEntity<ApiResponseFormatter<List<UserResponseDto>>> getUsers(
-                        @RequestParam(defaultValue = "1") int page,
-                        @RequestParam(defaultValue = "20") int size,
-                        @RequestParam(required = false) String status) {
+                        @Parameter(description = "Page number (1-indexed)", example = "1") @RequestParam(defaultValue = "1") int page,
+                        @Parameter(description = "Page size", example = "20") @RequestParam(defaultValue = "20") int size,
+                        @Parameter(description = "Filter by user status (ACTIVE, BLOCK)") @RequestParam(required = false) String status) {
 
                 if (page < 0 || size <= 0) {
                         throw new ValidationException(ApiMessage.PAGE_VALIDATION_ERROR);
                 }
 
-                if (!Status.isValid(status)) {
+                if (status != null && !Status.isValid(status)) {
                         throw new ValidationException("Invalid status");
                 }
 
@@ -139,16 +156,18 @@ public class AdminController {
                                 pagination));
         }
 
-        /**
-         * Get user by ID (admin only)
-         * GET /api/v1/admin/users/{userId}
-         */
+        @Operation(summary = "Get user by ID", description = "Retrieves detailed user information including email, status, and timestamps.")
+        @ApiResponses(value = {
+                        @ApiResponse(responseCode = "200", description = "User found", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class))),
+                        @ApiResponse(responseCode = "404", description = "User not found", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class)))
+        })
         @GetMapping("/users/{userId}")
         public ResponseEntity<ApiResponseFormatter<UserResponseDto>> getUserById(
-                        @PathVariable String userId)
+                        @Parameter(description = "User ID", required = true) @PathVariable String userId)
                         throws NotFoundException {
 
-                UserResponseDto response = userReadService.getUserByIdByAdmin(userId);
+                String decodedUserId = UrlEncoderUtil.decode(userId);
+                UserResponseDto response = userReadService.getUserByIdByAdmin(decodedUserId);
 
                 return ResponseEntity.ok(ApiResponseFormatter.formatter(
                                 HttpStatus.OK.value(),
@@ -156,16 +175,18 @@ public class AdminController {
                                 response));
         }
 
-        /**
-         * Delete user (admin only - hard delete)
-         * DELETE /api/v1/admin/users/{userId}
-         */
+        @Operation(summary = "Delete user", description = "Permanently deletes a user account. This action is irreversible.")
+        @ApiResponses(value = {
+                        @ApiResponse(responseCode = "200", description = "User deleted", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class))),
+                        @ApiResponse(responseCode = "404", description = "User not found", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class)))
+        })
         @DeleteMapping("/users/{userId}")
         public ResponseEntity<ApiResponseFormatter<Void>> deleteUser(
-                        @PathVariable String userId)
+                        @Parameter(description = "User ID", required = true) @PathVariable String userId)
                         throws NotFoundException {
 
-                userWriteService.deleteUserByAdmin(userId);
+                String decodedUserId = UrlEncoderUtil.decode(userId);
+                userWriteService.deleteUserByAdmin(decodedUserId);
 
                 return ResponseEntity.ok(ApiResponseFormatter.formatter(
                                 HttpStatus.OK.value(),
