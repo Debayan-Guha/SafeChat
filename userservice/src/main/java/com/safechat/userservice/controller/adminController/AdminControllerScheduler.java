@@ -1,4 +1,4 @@
-package com.safechat.userservice.controller;
+package com.safechat.userservice.controller.adminController;
 
 import java.util.Map;
 

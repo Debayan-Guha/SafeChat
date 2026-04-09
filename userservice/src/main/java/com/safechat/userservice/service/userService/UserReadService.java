@@ -35,11 +35,12 @@ public class UserReadService {
     private final BcryptEncoder bcryptEncoder;
     private final JwtUtils jwtUtils;
 
-    public UserReadService(UserDbService userDbService, AesEncryption aesEncryption, JwtUtils jwtUtils,BcryptEncoder bcryptEncoder) {
+    public UserReadService(UserDbService userDbService, AesEncryption aesEncryption, JwtUtils jwtUtils,
+            BcryptEncoder bcryptEncoder) {
         this.userDbService = userDbService;
         this.aesEncryption = aesEncryption;
         this.jwtUtils = jwtUtils;
-        this.bcryptEncoder=bcryptEncoder;
+        this.bcryptEncoder = bcryptEncoder;
     }
 
     public void isDisplayNameExists(String displayName) throws NotFoundException, AlreadyExistsException {
@@ -98,7 +99,10 @@ public class UserReadService {
                 SERVICE_NAME, METHOD_NAME);
 
         List<UserResponseDto> data = userPage.getContent().stream()
-                .map(UserToDto::convert)
+                .map(user -> UserResponseDto.builder()
+                        .id(user.getId())
+                        .displayName(user.getDisplayName())
+                        .build())
                 .collect(Collectors.toList());
 
         PaginationData pagination = PaginationData.builder()
@@ -145,5 +149,52 @@ public class UserReadService {
         if (!bcryptEncoder.bCryptPasswordEncoder().matches(privateKey, userEntity.getEncryptedPrivateKey())) {
             throw new ValidationException("Invalid private key");
         }
+    }
+
+    public Map<String, Object> getUsersByAdmin(int page, int size, String status) {
+        final String METHOD_NAME = "getUsersByAdmin";
+
+        Pageable pageable = PageRequest.of(page - 1, size);
+
+        Specification<UserEntity> spec = (root, query, cb) -> {
+            if (status != null && !status.isBlank()) {
+                return cb.equal(root.get("status"), status);
+            }
+            return cb.conjunction();
+        };
+
+        Page<UserEntity> userPage = OperationExecutor.dbGet(
+                () -> userDbService.getUsers(spec, pageable),
+                SERVICE_NAME, METHOD_NAME);
+
+        List<UserResponseDto> data = userPage.getContent().stream()
+                .map(UserToDto::convert)
+                .collect(Collectors.toList());
+
+        PaginationData pagination = PaginationData.builder()
+                .totalPages(userPage.getTotalPages())
+                .totalElements(userPage.getTotalElements())
+                .currentPageTotalElements(data.size())
+                .currentPage(page)
+                .build();
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("data", data);
+        result.put("pagination", pagination);
+
+        return result;
+    }
+
+    public UserResponseDto getUserByIdByAdmin(String userId) throws NotFoundException {
+        final String METHOD_NAME = "getUserByIdByAdmin";
+
+        Specification<UserEntity> spec = (root, query, cb) -> cb.equal(root.get("id"), userId);
+
+        UserEntity userEntity = OperationExecutor
+                .dbGet(() -> userDbService.getUser(spec), SERVICE_NAME, METHOD_NAME)
+                .orElseThrow(() -> new NotFoundException(ApiMessage.USER_NOT_FOUND));
+
+        // Admin can see all fields (except password and encryptedPrivateKey)
+        return OperationExecutor.map(() -> UserToDto.convert(userEntity), SERVICE_NAME, METHOD_NAME);
     }
 }

@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.safechat.userservice.dto.request.AdminLoginDto;
 import com.safechat.userservice.dto.request.UserLoginDto;
 import com.safechat.userservice.exception.ApplicationException.CredentialMisMatchException;
 import com.safechat.userservice.exception.ApplicationException.NotFoundException;
@@ -51,4 +52,30 @@ public class AuthController {
                         HttpStatus.OK.value(),
                         ApiMessage.USER_LOGOUT_SUCCESS));
     }
+
+    @PostMapping("/admin/login")
+    public ResponseEntity<ApiResponseFormatter<String>> adminLogin(@Valid @RequestBody AdminLoginDto credentials)
+            throws NotFoundException, CredentialMisMatchException {
+
+        String encryptedToken = authService.adminTokenCreation(credentials);
+
+        return ResponseEntity.status(HttpStatus.OK)
+                .body(ApiResponseFormatter.formatter(
+                        HttpStatus.OK.value(),
+                        "Admin token created successfully",
+                        encryptedToken));
+    }
+
+    @PostMapping("/admin/logout")
+    public ResponseEntity<ApiResponseFormatter<Void>> adminLogout() {
+
+        String token = (String) SecurityContextHolder.getContext().getAuthentication().getCredentials();
+        authService.adminLogout(token);
+
+        return ResponseEntity.status(HttpStatus.OK)
+                .body(ApiResponseFormatter.formatter(
+                        HttpStatus.OK.value(),
+                        "Admin logout successfully"));
+    }
+
 }

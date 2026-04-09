@@ -376,4 +376,56 @@ public class UserWriteService {
         userDbService.deleteAll(usersToDelete);
     }
 
+    @Transactional
+    public void blockUserByAdmin(String userIdToBlock) throws NotFoundException, AlreadyExistsException {
+        final String METHOD_NAME = "blockUserByAdmin";
+
+        Specification<UserEntity> getUserById = (root, query, cb) -> cb.equal(root.get("id"), userIdToBlock);
+
+        UserEntity userEntity = OperationExecutor
+                .dbGet(() -> userDbService.getUser(getUserById), SERVICE_NAME, METHOD_NAME)
+                .orElseThrow(() -> new NotFoundException(ApiMessage.USER_NOT_FOUND));
+
+        if (Status.BLOCK.equals(userEntity.getStatus())) {
+            throw new AlreadyExistsException("User is already blocked");
+        }
+
+        userEntity.setStatus(Status.BLOCK);
+
+        OperationExecutor.dbSave(() -> userDbService.save(userEntity), SERVICE_NAME, METHOD_NAME);
+    }
+
+    @Transactional
+    public void unblockUserByAdmin(String userIdToUnblock) throws NotFoundException {
+        final String METHOD_NAME = "unblockUserByAdmin";
+
+        Specification<UserEntity> getUserById = (root, query, cb) -> cb.equal(root.get("id"), userIdToUnblock);
+
+        UserEntity userEntity = OperationExecutor
+                .dbGet(() -> userDbService.getUser(getUserById), SERVICE_NAME, METHOD_NAME)
+                .orElseThrow(() -> new NotFoundException(ApiMessage.USER_NOT_FOUND));
+
+        if (!Status.BLOCK.equals(userEntity.getStatus())) {
+            throw new ValidationException("User is not blocked");
+        }
+
+        userEntity.setStatus(Status.ACTIVE);
+
+        OperationExecutor.dbSave(() -> userDbService.save(userEntity), SERVICE_NAME, METHOD_NAME);
+    }
+
+    @Transactional
+    public void deleteUserByAdmin(String userId) throws NotFoundException {
+        final String METHOD_NAME = "deleteUserByAdmin";
+
+        Specification<UserEntity> getUserById = (root, query, cb) -> cb.equal(root.get("id"), userId);
+
+        UserEntity userEntity = OperationExecutor
+                .dbGet(() -> userDbService.getUser(getUserById), SERVICE_NAME, METHOD_NAME)
+                .orElseThrow(() -> new NotFoundException(ApiMessage.USER_NOT_FOUND));
+
+        // Hard delete the user
+        OperationExecutor.dbRemove(() -> userDbService.delete(userEntity), SERVICE_NAME, METHOD_NAME);
+    }
+
 }

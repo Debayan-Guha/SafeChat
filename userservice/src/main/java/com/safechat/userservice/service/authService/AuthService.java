@@ -10,13 +10,16 @@ import java.util.function.Function;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 
+import com.safechat.userservice.dto.request.AdminLoginDto;
 import com.safechat.userservice.dto.request.UserLoginDto;
+import com.safechat.userservice.entity.AdminEntity;
 import com.safechat.userservice.entity.UserEntity;
 import com.safechat.userservice.exception.ApplicationException.CredentialMisMatchException;
 import com.safechat.userservice.exception.ApplicationException.NotFoundException;
 import com.safechat.userservice.exception.ApplicationException.ValidationException;
 import com.safechat.userservice.jwt.JwtUtils;
 import com.safechat.userservice.service.CachedService;
+import com.safechat.userservice.service.dbService.AdminDbService;
 import com.safechat.userservice.service.dbService.UserDbService;
 import com.safechat.userservice.utility.OperationExecutor;
 import com.safechat.userservice.utility.Enumeration.Status;
@@ -26,6 +29,7 @@ import com.safechat.userservice.utility.encryption.BcryptEncoder;
 
 import io.jsonwebtoken.Claims;
 import jakarta.transaction.Transactional;
+import jakarta.validation.Valid;
 import jakarta.persistence.criteria.Predicate;
 
 @Service
@@ -34,17 +38,19 @@ public class AuthService {
     private final String SERVICE_NAME = "AuthService";
 
     private final UserDbService userDbService;
+    private final AdminDbService adminDbService;
     private final AesEncryption aesEncryption;
     private final BcryptEncoder bcryptEncoder;
     private final JwtUtils jwtUtils;
     private final CachedService cachedService;
 
-    public AuthService(UserDbService userDbService,
+    public AuthService(UserDbService userDbService, AdminDbService adminDbService,
             AesEncryption aesEncryption,
             BcryptEncoder bcryptEncoder,
             JwtUtils jwtUtils,
             CachedService cachedService) {
         this.userDbService = userDbService;
+        this.adminDbService = adminDbService;
         this.aesEncryption = aesEncryption;
         this.bcryptEncoder = bcryptEncoder;
         this.jwtUtils = jwtUtils;
@@ -117,6 +123,73 @@ public class AuthService {
             // Remove JTI from Redis (invalidates token)
             OperationExecutor.redisRemove(
                     () -> cachedService.deleteCacheByKey(cacheKeyBuilder.apply(userId)),
+                    SERVICE_NAME,
+                    METHOD_NAME);
+
+        } catch (Exception e) {
+            // Token might be invalid, still proceed with logout
+        }
+    }
+
+    public String adminTokenCreation(AdminLoginDto credentials) throws NotFoundException, CredentialMisMatchException {
+        final String METHOD_NAME = "adminTokenCreation";
+        final Function<String, String> cacheKeyBuilder = (adminId) -> String.format("user:auth:token:jti:admin:uid:%s",
+                adminId);// aid=admin id
+
+        Specification<AdminEntity> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+
+            predicates.add(cb.equal(root.get("email"), credentials.getEmail().toLowerCase()));
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        Optional<AdminEntity> adminEntity = OperationExecutor.dbGet(() -> adminDbService.getAdmin(spec), SERVICE_NAME,
+                METHOD_NAME);
+
+        if (!adminEntity.isPresent()) {
+            throw new NotFoundException("Admin not found ");
+        }
+
+        if (!bcryptEncoder.bCryptPasswordEncoder().matches(credentials.getPassword(),
+                adminEntity.get().getPassword())) {
+            throw new CredentialMisMatchException("Incorrect password");
+        }
+
+        // Check for existing JTI in cache
+        Optional<String> cachedJti = Optional.ofNullable(OperationExecutor.redisGet(
+                () -> cachedService.getFromCache(cacheKeyBuilder.apply(adminEntity.get().getId()), String.class),
+                SERVICE_NAME, METHOD_NAME));
+
+        String jti = cachedJti.orElseGet(() -> UUID.randomUUID().toString());
+
+        // Generate token for admin
+        String token = jwtUtils.generateToken(adminEntity.get().getId(), adminEntity.get().getName(), "ADMIN", jti);
+
+        if (!cachedJti.isPresent()) {
+            OperationExecutor.redisSave(
+                    () -> cachedService.saveResponse(cacheKeyBuilder.apply(adminEntity.get().getId()), jti,
+                            Duration.ofDays(365)),
+                    SERVICE_NAME, METHOD_NAME);
+        }
+
+        return aesEncryption.encrypt(token);
+    }
+
+    @Transactional
+    public void adminLogout(String encryptedToken) {
+        final String METHOD_NAME = "adminLogout";
+        final Function<String, String> cacheKeyBuilder = (adminId) -> String.format("user:auth:token:jti:admin:uid:%s",
+                adminId);
+
+        try {
+            String decryptToken = aesEncryption.decrypt(encryptedToken);
+            Claims claims = jwtUtils.extractAllClaims(decryptToken);
+            String adminId = (String) claims.get("uid");
+
+            // Remove JTI from Redis (invalidates token)
+            OperationExecutor.redisRemove(
+                    () -> cachedService.deleteCacheByKey(cacheKeyBuilder.apply(adminId)),
                     SERVICE_NAME,
                     METHOD_NAME);
 

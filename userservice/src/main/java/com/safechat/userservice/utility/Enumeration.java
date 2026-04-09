@@ -12,6 +12,12 @@ public interface Enumeration {
     public interface Status {
         String ACTIVE = "active";
         String BLOCK = "block";
+
+        static boolean isValid(String value) {
+            return Stream
+                    .of(ACTIVE, BLOCK)
+                    .anyMatch(type -> type.equals(value));
+        }
     }
 
     public interface OtpType {

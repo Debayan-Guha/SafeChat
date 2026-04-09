@@ -13,17 +13,12 @@ import lombok.Setter;
 @Setter
 @AllArgsConstructor
 @NoArgsConstructor
-public class UserResponseDto {
+public class AdminResponseDto {
 
-    private String id;// used for sharing with other to find friend
-    private String userName;
-    private String displayName;
+    private String id;
+    private String name;
     private String email;
-    private String publicKey;
-    private String status;
+    private String description;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
-    private boolean isDeletionScheduled;
-    private LocalDateTime deletionScheduledRequestAt;
-    private LocalDateTime deletionScheduledFor;
 }
