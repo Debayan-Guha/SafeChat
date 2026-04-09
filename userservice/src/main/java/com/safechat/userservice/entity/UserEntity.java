@@ -8,6 +8,7 @@ import org.hibernate.annotations.UpdateTimestamp;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -16,7 +17,17 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "users")
+@Table(name = "users", indexes = {
+        // 1. For login by email (isEmailExists, login)
+        @Index(name = "idx_email", columnList = "email", unique = true),
+
+        // 2. For login by displayName (isDisplayNameExists, login, searchUsers exact
+        // match)
+        @Index(name = "idx_display_name", columnList = "display_name", unique = true),
+
+        // 3. CRITICAL: For deletion scheduler (deleteExpiredAccounts query)
+        @Index(name = "idx_deletion_cleanup", columnList = "is_deletion_scheduled, deletion_scheduled_for")
+})
 @Builder
 @Getter
 @Setter

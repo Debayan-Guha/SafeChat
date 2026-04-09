@@ -2,11 +2,18 @@ package com.safechat.userservice.service.userService;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.Random;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
+import jakarta.persistence.criteria.Predicate;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 
@@ -36,6 +43,9 @@ import jakarta.validation.ValidationException;
 public class UserWriteService {
 
     private final String SERVICE_NAME = "UserWriteService";
+
+    private static final int BATCH_SIZE = 1000;
+    private final AtomicBoolean isRunning = new AtomicBoolean(false);
 
     private final UserDbService userDbService;
     private final AesEncryption aesEncryption;
@@ -266,8 +276,7 @@ public class UserWriteService {
         OperationExecutor.redisRemove(() -> cachedService.deleteCacheByKey(cacheOtpKey.apply(userEntity.getEmail())),
                 SERVICE_NAME, METHOD_NAME);
 
-        Specification<UserEntity> hasIdSpec = (root, query, cb) -> cb.equal(root.get("id"), userId);
-        OperationExecutor.dbRemove(() -> userDbService.delete(hasIdSpec), SERVICE_NAME, METHOD_NAME);
+        OperationExecutor.dbRemove(() -> userDbService.delete(userEntity), SERVICE_NAME, METHOD_NAME);
 
         // Send instant deletion confirmation email
         emailService.sendAfterDeletionEmail(userEntity.getEmail());
@@ -317,6 +326,54 @@ public class UserWriteService {
             cachedService.deleteCacheByKey(cacheKey);
             throw new RuntimeException("Failed to send OTP. Please try again.", e);
         }
+    }
+
+    public void deleteExpiredAccounts() {
+        if (!isRunning.compareAndSet(false, true)) {
+            return;
+        }
+
+        try {
+            int page = 0;
+
+            while (true) {
+                Pageable pageable = PageRequest.of(page, BATCH_SIZE);
+
+                Specification<UserEntity> spec = (root, query, cb) -> {
+                    Predicate isScheduled = cb.isTrue(root.get("isDeletionScheduled"));
+                    Predicate timePassed = cb.lessThanOrEqualTo(
+                            root.get("deletionScheduledFor"),
+                            LocalDateTime.now());
+                    return cb.and(isScheduled, timePassed);
+                };
+
+                List<UserEntity> usersToDelete = userDbService.getUsers(spec, pageable).getContent();
+
+                if (usersToDelete.isEmpty()) {
+                    break;
+                }
+
+                // Collect user IDs from Set (automatically removes duplicates)
+                Set<String> userIds = usersToDelete.stream()
+                        .map(UserEntity::getId)
+                        .collect(Collectors.toSet());
+
+                // Delete the batch
+                deleteBatch(usersToDelete);
+
+                // AFTER successful deletion, send Kafka event
+                // kafkaProducer.sendUserDeletionEvent(userIds);
+
+                page++;
+            }
+        } finally {
+            isRunning.set(false);
+        }
+    }
+
+    @Transactional
+    public void deleteBatch(List<UserEntity> usersToDelete) {
+        userDbService.deleteAll(usersToDelete);
     }
 
 }

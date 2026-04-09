@@ -40,8 +40,11 @@ public class UserDbService {
         return userRepository.saveAll(users);
     }
 
-    public void delete(Specification<UserEntity> spec) {
-        List<UserEntity> users = userRepository.findAll(spec);
-        userRepository.deleteAll(users);
+    public void delete(UserEntity userEntity) {
+        userRepository.delete(userEntity);
+    }
+
+    public void deleteAll(List<UserEntity> userEntities) {
+        userRepository.deleteAll(userEntities);
     }
 }
