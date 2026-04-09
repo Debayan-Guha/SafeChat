@@ -12,7 +12,7 @@ import com.safechat.userservice.utility.Enumeration.ScheduledTaskType;
 import com.safechat.userservice.utility.api.ApiResponseFormatter;
 
 @RestController
-@RequestMapping("/api/v1/admin/scheduler")
+@RequestMapping("/api/v1/users/admin/scheduler")
 public class AdminControllerScheduler {
 
     private final DynamicSchedulerService schedulerService;

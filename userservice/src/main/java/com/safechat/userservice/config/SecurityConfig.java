@@ -33,9 +33,28 @@ public class SecurityConfig {
                                 "/api/v1/users/check-email",
                                 "/api/v1/users/otp/**",
                                 "/api/v1/users/auth/login",
-                                "/ws/**")
+                                "/api/v1/users/auth/admin/login")
                         .permitAll()
-                        // Protected endpoints (authentication required)
+                        
+                        // Admin only endpoints
+                        .requestMatchers(
+                                "/api/v1/users/admin/**",
+                                "/api/v1/users/auth/admin/logout")
+                        .hasRole("ADMIN")
+                        
+                        // User endpoints (authenticated)
+                        .requestMatchers(
+                                "/api/v1/users/profile",
+                                "/api/v1/users/{userId}",
+                                "/api/v1/users/search",
+                                "/api/v1/users/keys/**",
+                                "/api/v1/users/account/delete-request",
+                                "/api/v1/users/account/delete-instant",
+                                "/api/v1/users/account/delete-cancel",
+                                "/api/v1/users/auth/logout")
+                        .authenticated()
+                        
+                        // Any other request requires authentication
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 

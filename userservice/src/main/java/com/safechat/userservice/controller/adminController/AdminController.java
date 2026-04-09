@@ -24,7 +24,7 @@ import com.safechat.userservice.utility.api.PaginationData;
 import jakarta.validation.Valid;
 
 @RestController
-@RequestMapping("/api/v1/admin")
+@RequestMapping("/api/v1/users/admin")
 public class AdminController {
 
         private final UserReadService userReadService;
