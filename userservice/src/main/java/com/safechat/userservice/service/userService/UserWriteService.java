@@ -40,6 +40,7 @@ public class UserWriteService {
     private final UserDbService userDbService;
     private final AesEncryption aesEncryption;
     private final BcryptEncoder bcryptEncoder;
+    private final UserReadService userReadService;
     private final CachedService cachedService;
     private final EmailService emailService;
     private final JwtUtils jwtUtils;
@@ -47,20 +48,22 @@ public class UserWriteService {
     public UserWriteService(UserDbService userDbService,
             AesEncryption aesEncryption,
             BcryptEncoder bcryptEncoder,
-            CachedService cachedService, JwtUtils jwtUtils, EmailService emailService) {
+            CachedService cachedService, JwtUtils jwtUtils, EmailService emailService,
+            UserReadService userReadService) {
         this.userDbService = userDbService;
         this.aesEncryption = aesEncryption;
         this.bcryptEncoder = bcryptEncoder;
         this.cachedService = cachedService;
         this.jwtUtils = jwtUtils;
         this.emailService = emailService;
+        this.userReadService = userReadService;
     }
 
     @Transactional
     public void createAccount(UserAccountCreateDto requestDto) throws NotFoundException, AlreadyExistsException {
 
         final String METHOD_NAME = "createAccount";
-        final String cacheKey = String.format("user:otp:%s", requestDto.getEmail().toLowerCase());
+        final String cacheKey = String.format("user:otp:%s:ACCOUNT_CREATION", requestDto.getEmail().toLowerCase());
 
         Integer cachedOtp = Optional.ofNullable(cachedService.getFromCache(cacheKey, Integer.class))
                 .orElseThrow(() -> new NotFoundException("OTP expired or not found"));
@@ -71,19 +74,8 @@ public class UserWriteService {
 
         OperationExecutor.redisRemove(() -> cachedService.deleteCacheByKey(cacheKey), SERVICE_NAME, METHOD_NAME);
 
-        Specification<UserEntity> displayNameSpec = (root, query, cb) -> cb.equal(root.get("displayName"),
-                requestDto.getDisplayName());
-
-        if (userDbService.exists(displayNameSpec)) {
-            throw new AlreadyExistsException("Display Name already exists");
-        }
-
-        Specification<UserEntity> emailSpec = (root, query, cb) -> cb.equal(root.get("email"),
-                requestDto.getEmail().toLowerCase());
-
-        if (userDbService.exists(emailSpec)) {
-            throw new AlreadyExistsException("Email is already registered");
-        }
+        userReadService.isDisplayNameExists(requestDto.getDisplayName());
+        userReadService.isEmailExists(requestDto.getEmail().toLowerCase());
 
         UserEntity userEntity = UserEntity.builder()
                 .id("USR_" + UUID.randomUUID().toString())
@@ -96,6 +88,8 @@ public class UserWriteService {
                 .password(bcryptEncoder.bCryptPasswordEncoder().encode(requestDto.getPassword())).build();
 
         OperationExecutor.dbSave(() -> userDbService.save(userEntity), SERVICE_NAME, METHOD_NAME);
+
+        emailService.sendWelcomeEmail(requestDto.getEmail().toLowerCase(), requestDto.getUserName());
 
     }
 
@@ -127,23 +121,14 @@ public class UserWriteService {
             if (!cachedOtp.equals(requestDto.getOtp())) {
                 throw new ValidationException("OTP mismatch for email update");
             }
-            Specification<UserEntity> emailSpec = (root, query, cb) -> cb.equal(root.get("email"),
-                    requestDto.getEmail().toLowerCase());
-
-            if (userDbService.exists(emailSpec)) {
-                throw new AlreadyExistsException("Email is already registered");
-            }
+            userReadService.isEmailExists(requestDto.getEmail().toLowerCase());
             userEntity.setEmail(requestDto.getEmail().toLowerCase());
             cachedService.deleteCacheByKey(cache1.apply(requestDto.getEmail().toLowerCase()));
         }
 
         if (requestDto.getDisplayName() != null && !requestDto.getDisplayName().isBlank()) {
             if (!requestDto.getDisplayName().equals(userEntity.getDisplayName())) {
-                Specification<UserEntity> nameSpec = (root, query, cb) -> cb.equal(root.get("displayName"),
-                        requestDto.getDisplayName());
-                if (userDbService.exists(nameSpec)) {
-                    throw new AlreadyExistsException("Display Name already exists");
-                }
+                userReadService.isDisplayNameExists(requestDto.getDisplayName());
             }
             userEntity.setDisplayName(requestDto.getDisplayName());
         }
@@ -165,7 +150,7 @@ public class UserWriteService {
         UserEntity updatedUser = OperationExecutor.dbSaveAndReturn(() -> userDbService.save(userEntity), SERVICE_NAME,
                 METHOD_NAME);
 
-        return OperationExecutor.map(() -> UserToDto.convert(userEntity), SERVICE_NAME, METHOD_NAME);
+        return OperationExecutor.map(() -> UserToDto.convert(updatedUser), SERVICE_NAME, METHOD_NAME);
     }
 
     @Transactional
@@ -320,23 +305,29 @@ public class UserWriteService {
         OperationExecutor.redisSave(() -> cachedService.saveResponse(cacheKey, otp, Duration.ofMinutes(1)),
                 SERVICE_NAME, METHOD_NAME);
 
-        // Send OTP via email based on type
-        switch (otpType) {
-            case OtpType.ACCOUNT_CREATION:
-                emailService.sendOtpEmail(email, otp);
-                break;
-            case OtpType.ACCOUNT_DELETION_REQUEST:
-                emailService.sendAccountDeletionRequestOtp(email, otp);
-                break;
-            case OtpType.ACCOUNT_DELETION_INSTANT:
-                emailService.sendAccountDeletionInstantOtp(email, otp);
-                break;
-            case OtpType.PASSWORD_RESET:
-                emailService.sendPasswordResetOtp(email, otp);
-                break;
-            case OtpType.EMAIL_UPDATE:
-                emailService.sendOtpEmail(email, otp);
-                break;
+        try {
+            // Send OTP via email based on type
+            switch (otpType) {
+                case OtpType.ACCOUNT_CREATION:
+                    emailService.sendAccountCreationOtp(email, otp);
+                    break;
+                case OtpType.ACCOUNT_DELETION_REQUEST:
+                    emailService.sendAccountDeletionRequestOtp(email, otp);
+                    break;
+                case OtpType.ACCOUNT_DELETION_INSTANT:
+                    emailService.sendAccountDeletionInstantOtp(email, otp);
+                    break;
+                case OtpType.PASSWORD_RESET:
+                    emailService.sendPasswordResetOtp(email, otp);
+                    break;
+                case OtpType.EMAIL_UPDATE:
+                    emailService.sendAccountCreationOtp(email, otp);
+                    break;
+            }
+        } catch (Exception e) {
+            // STEP 4: If email fails, rollback - delete the OTP from Redis
+            cachedService.deleteCacheByKey(cacheKey);
+            throw new RuntimeException("Failed to send OTP. Please try again.", e);
         }
     }
 
