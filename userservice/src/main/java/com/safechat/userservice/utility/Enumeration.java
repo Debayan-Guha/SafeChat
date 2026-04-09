@@ -30,14 +30,13 @@ public interface Enumeration {
         }
     }
 
-    public interface SortDirection {
-        String DESC = "desc";
-        String ASC = "asc";
+    public interface ScheduledTaskType {
+        String DELETE_EXPIRED_ACCOUNTS = "DELETE_EXPIRED_ACCOUNTS";
 
         static boolean isValid(String value) {
-            return DESC.equalsIgnoreCase(value) || ASC.equalsIgnoreCase(value);
+            return Stream.of(
+                    DELETE_EXPIRED_ACCOUNTS).anyMatch(type -> type.equals(value));
         }
-
     }
 
 }
