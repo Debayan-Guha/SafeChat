@@ -95,68 +95,11 @@ public class UserWriteService {
 
     @Transactional
     public UserResponseDto updateProfile(String encryptToken, UserProfileUpdateDto requestDto)
-            throws NotFoundException, AlreadyExistsException {
+            throws NotFoundException, AlreadyExistsException, ValidationException {
 
         final String METHOD_NAME = "updateProfile";
-        Function<String, String> cache1 = (email) -> String.format("user:otp:%s", email.toLowerCase());
-
-        String decryptToken = aesEncryption.decrypt(encryptToken);
-        String userId = (String) jwtUtils.extractAllClaims(decryptToken).get("uid");
-
-        Specification<UserEntity> getUserById = (root, query, cb) -> cb.equal(root.get("id"),
-                userId);
-
-        UserEntity userEntity = OperationExecutor
-                .dbGet(() -> userDbService.getUser(getUserById), SERVICE_NAME, METHOD_NAME)
-                .orElseThrow(() -> new NotFoundException("User not found with ID: " + userId));
-
-        if (requestDto.getEmail() != null && !requestDto.getEmail().equalsIgnoreCase(userEntity.getEmail())
-                && !requestDto.getEmail().isBlank()) {
-
-            Integer cachedOtp = Optional
-                    .ofNullable(cachedService.getFromCache(cache1.apply(requestDto.getEmail().toLowerCase()),
-                            Integer.class))
-                    .orElseThrow(() -> new NotFoundException("OTP expired or not found for new email"));
-
-            if (!cachedOtp.equals(requestDto.getOtp())) {
-                throw new ValidationException("OTP mismatch for email update");
-            }
-            userReadService.isEmailExists(requestDto.getEmail().toLowerCase());
-            userEntity.setEmail(requestDto.getEmail().toLowerCase());
-            cachedService.deleteCacheByKey(cache1.apply(requestDto.getEmail().toLowerCase()));
-        }
-
-        if (requestDto.getDisplayName() != null && !requestDto.getDisplayName().isBlank()) {
-            if (!requestDto.getDisplayName().equals(userEntity.getDisplayName())) {
-                userReadService.isDisplayNameExists(requestDto.getDisplayName());
-            }
-            userEntity.setDisplayName(requestDto.getDisplayName());
-        }
-
-        if (requestDto.getUserName() != null && !requestDto.getUserName().isBlank()) {
-            userEntity.setUserName(requestDto.getUserName());
-        }
-
-        if (requestDto.getOldPassword() != null && !requestDto.getOldPassword().isBlank()
-                && requestDto.getNewPassword() != null && !requestDto.getNewPassword().isBlank()) {
-
-            if (!bcryptEncoder.bCryptPasswordEncoder().matches(requestDto.getOldPassword(), userEntity.getPassword())) {
-                throw new ValidationException("Incorrect old password");
-            }
-            userEntity.setPassword(bcryptEncoder.bCryptPasswordEncoder().encode(requestDto.getNewPassword()));
-        }
-
-        // 5. Save and Return
-        UserEntity updatedUser = OperationExecutor.dbSaveAndReturn(() -> userDbService.save(userEntity), SERVICE_NAME,
-                METHOD_NAME);
-
-        return OperationExecutor.map(() -> UserToDto.convert(updatedUser), SERVICE_NAME, METHOD_NAME);
-    }
-
-    @Transactional
-    public void updateKeys(String encryptToken, UserProfileUpdateDto requestDto)
-            throws NotFoundException, ValidationException {
-        final String METHOD_NAME = "updateKeys";
+        Function<String, String> cacheKeyBuilder = (email) -> String.format("user:otp:%s:ACCOUNT_UPDATION",
+                email.toLowerCase());
 
         String decryptToken = aesEncryption.decrypt(encryptToken);
         String userId = (String) jwtUtils.extractAllClaims(decryptToken).get("uid");
@@ -165,23 +108,66 @@ public class UserWriteService {
 
         UserEntity userEntity = OperationExecutor
                 .dbGet(() -> userDbService.getUser(getUserById), SERVICE_NAME, METHOD_NAME)
-                .orElseThrow(() -> new NotFoundException(ApiMessage.USER_NOT_FOUND));
+                .orElseThrow(() -> new NotFoundException("User not found with ID: " + userId));
 
-        // Check if both keys are provided (can't update just one)
-        if ((requestDto.getPublicKey() != null && !requestDto.getPublicKey().isBlank())
-                && (requestDto.getPrivateKey() != null && !requestDto.getPrivateKey().isBlank())) {
+        // Update Email
+        if (requestDto.getEmailUpdate() != null
+                && !requestDto.getEmailUpdate().getEmail().equalsIgnoreCase(userEntity.getEmail())) {
 
-            // Update Public Key
-            userEntity.setPublicKey(requestDto.getPublicKey());
+            String newEmail = requestDto.getEmailUpdate().getEmail().toLowerCase();
+            int otp = requestDto.getEmailUpdate().getOtp();
 
-            // Update Private Key (store only the HASH)
-            userEntity.setEncryptedPrivateKey(bcryptEncoder.bCryptPasswordEncoder().encode(requestDto.getPrivateKey()));
+            Integer cachedOtp = Optional
+                    .ofNullable(cachedService.getFromCache(cacheKeyBuilder.apply(newEmail), Integer.class))
+                    .orElseThrow(() -> new NotFoundException("OTP expired or not found for new email"));
 
-        } else {
-            throw new ValidationException("Both public key and private key must be provided together");
+            if (cachedOtp != otp) {
+                throw new ValidationException("OTP mismatch for email update");
+            }
+
+            userReadService.isEmailExists(newEmail);
+            userEntity.setEmail(newEmail);
+            cachedService.deleteCacheByKey(cacheKeyBuilder.apply(newEmail));
         }
 
-        OperationExecutor.dbSave(() -> userDbService.save(userEntity), SERVICE_NAME, METHOD_NAME);
+        // Update Display Name
+        if (requestDto.getDisplayName() != null && !requestDto.getDisplayName().isBlank()) {
+            if (!requestDto.getDisplayName().equals(userEntity.getDisplayName())) {
+                userReadService.isDisplayNameExists(requestDto.getDisplayName());
+            }
+            userEntity.setDisplayName(requestDto.getDisplayName());
+        }
+
+        // Update User Name
+        if (requestDto.getUserName() != null && !requestDto.getUserName().isBlank()) {
+            userEntity.setUserName(requestDto.getUserName());
+        }
+
+        // Update Password
+        if (requestDto.getPasswordUpdate() != null) {
+
+            String oldPassword = requestDto.getPasswordUpdate().getOldPassword();
+            String newPassword = requestDto.getPasswordUpdate().getNewPassword();
+
+            if (!bcryptEncoder.bCryptPasswordEncoder().matches(oldPassword, userEntity.getPassword())) {
+                throw new ValidationException("Incorrect old password");
+            }
+            userEntity.setPassword(bcryptEncoder.bCryptPasswordEncoder().encode(newPassword));
+        }
+
+        // Update Keys (both must be provided together)
+        if (requestDto.getKeysUpdate() != null) {
+
+            userEntity.setPublicKey(requestDto.getKeysUpdate().getPublicKey());
+            userEntity.setEncryptedPrivateKey(
+                    bcryptEncoder.bCryptPasswordEncoder().encode(requestDto.getKeysUpdate().getPrivateKey()));
+        }
+
+        // Save and Return
+        UserEntity updatedUser = OperationExecutor.dbSaveAndReturn(() -> userDbService.save(userEntity), SERVICE_NAME,
+                METHOD_NAME);
+
+        return OperationExecutor.map(() -> UserToDto.convert(updatedUser), SERVICE_NAME, METHOD_NAME);
     }
 
     @Transactional
@@ -320,7 +306,7 @@ public class UserWriteService {
                 case OtpType.PASSWORD_RESET:
                     emailService.sendPasswordResetOtp(email, otp);
                     break;
-                case OtpType.EMAIL_UPDATE:
+                case OtpType.ACCOUNT_UPDATION:
                     emailService.sendAccountCreationOtp(email, otp);
                     break;
             }
@@ -331,24 +317,6 @@ public class UserWriteService {
         }
     }
 
-    @Transactional
-    public void verifyPrivateKey(String encryptToken, String privateKey)
-            throws NotFoundException, ValidationException {
-        final String METHOD_NAME = "verifyPrivateKey";
-
-        String decryptToken = aesEncryption.decrypt(encryptToken);
-        String userId = (String) jwtUtils.extractAllClaims(decryptToken).get("uid");
-
-        Specification<UserEntity> getUserById = (root, query, cb) -> cb.equal(root.get("id"), userId);
-
-        UserEntity userEntity = OperationExecutor
-                .dbGet(() -> userDbService.getUser(getUserById), SERVICE_NAME, METHOD_NAME)
-                .orElseThrow(() -> new NotFoundException(ApiMessage.USER_NOT_FOUND));
-
-        // Verify private key matches stored hash
-        if (!bcryptEncoder.bCryptPasswordEncoder().matches(privateKey, userEntity.getEncryptedPrivateKey())) {
-            throw new ValidationException("Invalid private key");
-        }
-    }
+    
 
 }

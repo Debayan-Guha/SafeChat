@@ -15,6 +15,7 @@ import com.safechat.userservice.dto.response.UserResponseDto;
 import com.safechat.userservice.entity.UserEntity;
 import com.safechat.userservice.exception.ApplicationException.AlreadyExistsException;
 import com.safechat.userservice.exception.ApplicationException.NotFoundException;
+import com.safechat.userservice.exception.ApplicationException.ValidationException;
 import com.safechat.userservice.jwt.JwtUtils;
 import com.safechat.userservice.mapper.toDto.UserToDto;
 import com.safechat.userservice.service.dbService.UserDbService;
@@ -22,6 +23,7 @@ import com.safechat.userservice.utility.OperationExecutor;
 import com.safechat.userservice.utility.api.ApiMessage;
 import com.safechat.userservice.utility.api.PaginationData;
 import com.safechat.userservice.utility.encryption.AesEncryption;
+import com.safechat.userservice.utility.encryption.BcryptEncoder;
 
 @Service
 public class UserReadService {
@@ -30,12 +32,14 @@ public class UserReadService {
 
     private final UserDbService userDbService;
     private final AesEncryption aesEncryption;
+    private final BcryptEncoder bcryptEncoder;
     private final JwtUtils jwtUtils;
 
-    public UserReadService(UserDbService userDbService, AesEncryption aesEncryption, JwtUtils jwtUtils) {
+    public UserReadService(UserDbService userDbService, AesEncryption aesEncryption, JwtUtils jwtUtils,BcryptEncoder bcryptEncoder) {
         this.userDbService = userDbService;
         this.aesEncryption = aesEncryption;
         this.jwtUtils = jwtUtils;
+        this.bcryptEncoder=bcryptEncoder;
     }
 
     public void isDisplayNameExists(String displayName) throws NotFoundException, AlreadyExistsException {
@@ -122,5 +126,24 @@ public class UserReadService {
 
         return UserResponseDto.builder().displayName(userEntity.getDisplayName()).publicKey(userEntity.getPublicKey())
                 .build();
+    }
+
+    public void verifyPrivateKey(String encryptToken, String privateKey)
+            throws NotFoundException, ValidationException {
+        final String METHOD_NAME = "verifyPrivateKey";
+
+        String decryptToken = aesEncryption.decrypt(encryptToken);
+        String userId = (String) jwtUtils.extractAllClaims(decryptToken).get("uid");
+
+        Specification<UserEntity> getUserById = (root, query, cb) -> cb.equal(root.get("id"), userId);
+
+        UserEntity userEntity = OperationExecutor
+                .dbGet(() -> userDbService.getUser(getUserById), SERVICE_NAME, METHOD_NAME)
+                .orElseThrow(() -> new NotFoundException(ApiMessage.USER_NOT_FOUND));
+
+        // Verify private key matches stored hash
+        if (!bcryptEncoder.bCryptPasswordEncoder().matches(privateKey, userEntity.getEncryptedPrivateKey())) {
+            throw new ValidationException("Invalid private key");
+        }
     }
 }

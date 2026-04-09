@@ -1,5 +1,6 @@
 package com.safechat.userservice.dto.request;
 
+import jakarta.validation.constraints.NotBlank;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -12,8 +13,10 @@ import lombok.Setter;
 @AllArgsConstructor
 @NoArgsConstructor
 public class UserLoginDto {
-    
+
     private String displayName;
     private String email;
+
+    @NotBlank
     private String password;
 }

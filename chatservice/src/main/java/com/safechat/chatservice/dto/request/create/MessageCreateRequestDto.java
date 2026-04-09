@@ -8,7 +8,6 @@ import lombok.Setter;
 public class MessageCreateRequestDto {
 
     private String conversationId;
-    private String senderId;
     private String encryptedMessage;
     private Integer expirySeconds;
 }

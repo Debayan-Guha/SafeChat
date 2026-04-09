@@ -7,10 +7,10 @@ import com.safechat.chatservice.dto.request.create.MessageCreateRequestDto;
 
 public class MessageToDocument {
 
-    public static MessageDocument convert(MessageCreateRequestDto dto) {
+    public static MessageDocument convert(String userId,MessageCreateRequestDto dto) {
         return MessageDocument.builder()
                 .conversationId(dto.getConversationId())
-                .senderId(dto.getSenderId())
+                .senderId(userId)
                 .encryptedMessage(dto.getEncryptedMessage())
                 .sendAt(LocalDateTime.now())                
                 .isDelivered(false)

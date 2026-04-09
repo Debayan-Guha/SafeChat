@@ -10,6 +10,7 @@ import com.safechat.userservice.exception.ApplicationException.NotFoundException
 import com.safechat.userservice.exception.ApplicationException.ValidationException;
 import com.safechat.userservice.service.userService.UserReadService;
 import com.safechat.userservice.service.userService.UserWriteService;
+import com.safechat.userservice.utility.UrlEncoderUtil;
 import com.safechat.userservice.utility.Enumeration.OtpType;
 import com.safechat.userservice.utility.api.ApiMessage;
 import com.safechat.userservice.utility.api.ApiResponseFormatter;
@@ -37,13 +38,6 @@ public class UserController {
 
         // ==================== ACCOUNT MANAGEMENT ====================
 
-        /**
-         * Create new user account
-         * POST /api/v1/users/account
-         * Body: { phone/email, password, displayName, publicKey }
-         * 
-         * @throws NotFoundException
-         */
         @PostMapping("/account")
         public ResponseEntity<ApiResponseFormatter<Void>> createAccount(
                         @RequestBody @Valid UserAccountCreateDto requestDto)
@@ -57,52 +51,37 @@ public class UserController {
                                                 ApiMessage.ACCOUNT_CREATED));
         }
 
-        /**
-         * Check if display name already exists
-         * GET /api/v1/users/check-displayname?displayName=john_doe
-         * 
-         * @throws AlreadyExistsException
-         * @throws NotFoundException
-         */
         @GetMapping("/check-displayname")
         public ResponseEntity<ApiResponseFormatter<Void>> checkDisplayNameExists(
                         @RequestParam String displayName) throws NotFoundException, AlreadyExistsException {
 
-                userReadService.isDisplayNameExists(displayName);
+                String decodedDisplayName = UrlEncoderUtil.decode(displayName);
+                userReadService.isDisplayNameExists(decodedDisplayName);
 
                 return ResponseEntity.ok(ApiResponseFormatter.formatter(
                                 HttpStatus.OK.value(),
                                 "No user exists with this Display Name"));
         }
 
-        /**
-         * Check if email already exists
-         * 
-         * @throws AlreadyExistsException
-         * @throws NotFoundException
-         */
         @GetMapping("/check-email")
         public ResponseEntity<ApiResponseFormatter<Void>> checkEmailExists(
                         @RequestParam String email) throws NotFoundException, AlreadyExistsException {
 
-                userReadService.isEmailExists(email);
+                String decodedEmail = UrlEncoderUtil.decode(email);
+                userReadService.isEmailExists(decodedEmail);
 
                 return ResponseEntity.ok(ApiResponseFormatter.formatter(
                                 HttpStatus.OK.value(),
                                 ApiMessage.EMAIL_NOT_REGISTERED));
         }
 
-        /**
-         * Get user by ID (returns full user details including display name and public
-         * key)
-         * GET /api/v1/users/{userId}
-         */
         @GetMapping("/{userId}")
         public ResponseEntity<ApiResponseFormatter<UserResponseDto>> getUserById(
                         @PathVariable String userId)
                         throws NotFoundException {
 
-                UserResponseDto response = userReadService.getUserById(userId);
+                String decodedUserId = UrlEncoderUtil.decode(userId);
+                UserResponseDto response = userReadService.getUserById(decodedUserId);
 
                 return ResponseEntity.ok(ApiResponseFormatter.formatter(
                                 HttpStatus.OK.value(),
@@ -110,13 +89,6 @@ public class UserController {
                                 response));
         }
 
-        /**
-         * Update user account
-         * PUT /api/v1/users/account
-         * Body: { displayName, avatar, bio, status }
-         * 
-         * @throws AlreadyExistsException
-         */
         @PatchMapping("/profile")
         public ResponseEntity<ApiResponseFormatter<UserResponseDto>> updateProfile(
                         @RequestBody @Valid UserProfileUpdateDto requestDto)
@@ -133,10 +105,6 @@ public class UserController {
                                 response));
         }
 
-        /**
-         * Get my profile
-         * GET /api/v1/users/me
-         */
         @GetMapping("/profile")
         public ResponseEntity<ApiResponseFormatter<UserResponseDto>> getMyProfile()
                         throws NotFoundException {
@@ -152,10 +120,6 @@ public class UserController {
                                 response));
         }
 
-        /**
-         * Search users by phone/email/displayName
-         * GET /api/v1/users/search?query=john&page=0&size=20
-         */
         @GetMapping("/search")
         public ResponseEntity<ApiResponseFormatter<List<UserResponseDto>>> searchUsers(
                         @RequestParam String displayName,
@@ -166,7 +130,8 @@ public class UserController {
                         throw new ValidationException(ApiMessage.PAGE_VALIDATION_ERROR);
                 }
 
-                Map<String, Object> result = userReadService.searchUsers(displayName, page, size);
+                String decodedDisplayName = UrlEncoderUtil.decode(displayName);
+                Map<String, Object> result = userReadService.searchUsers(decodedDisplayName, page, size);
 
                 List<UserResponseDto> data = (List<UserResponseDto>) result.get("data");
                 PaginationData pagination = (PaginationData) result.get("pagination");
@@ -180,11 +145,6 @@ public class UserController {
 
         // ==================== KEY MANAGEMENT ====================
 
-        /**
-         * Verify private key
-         * POST /api/v1/users/verify-private-key
-         * Body: { privateKey }
-         */
         @PostMapping("/keys/verify/private-key")
         public ResponseEntity<ApiResponseFormatter<Void>> verifyPrivateKey(
                         @RequestBody @Valid VerifyPrivateKeyDto requestDto)
@@ -193,39 +153,15 @@ public class UserController {
                 String encryptToken = (String) SecurityContextHolder.getContext()
                                 .getAuthentication().getCredentials();
 
-                userWriteService.verifyPrivateKey(encryptToken, requestDto.getPrivateKey());
+                userReadService.verifyPrivateKey(encryptToken, requestDto.getPrivateKey());
 
                 return ResponseEntity.ok(ApiResponseFormatter.formatter(
                                 HttpStatus.OK.value(),
                                 "Private key verified successfully"));
         }
 
-        /**
-         * Update public key
-         * PUT /api/v1/users/keys/public
-         * Body: { publicKey, signedPreKey, oneTimePreKeys }
-         */
-        @PutMapping("/keys")
-        public ResponseEntity<ApiResponseFormatter<Void>> updatePublicKey(
-                        @RequestBody UserProfileUpdateDto requestDto)
-                        throws NotFoundException {
-
-                String encryptToken = (String) SecurityContextHolder.getContext()
-                                .getAuthentication().getCredentials();
-
-                userWriteService.updateKeys(encryptToken, requestDto);
-
-                return ResponseEntity.ok(ApiResponseFormatter.formatter(
-                                HttpStatus.OK.value(), ApiMessage.KEYS_UPDATED));
-        }
-
         // ==================== ACCOUNT DELETION ====================
 
-        /**
-         * Request account deletion (GDPR style)
-         * POST /api/v1/users/account/delete-request
-         * Body: { reason, password }
-         */
         @PostMapping("/account/delete-request")
         public ResponseEntity<ApiResponseFormatter<Void>> requestAccountDeletion(
                         @RequestBody @Valid OtpReceiveDto requestDto)
@@ -241,10 +177,6 @@ public class UserController {
                                 ApiMessage.DELETION_REQUEST_SUBMITTED));
         }
 
-        /**
-         * Confirm account deletion (with OTP)
-         * DELETE /api/v1/users/account/confirm?otp=123456
-         */
         @PostMapping("/account/delete-instant")
         public ResponseEntity<ApiResponseFormatter<Void>> instantAccountDeletion(
                         @RequestBody @Valid OtpReceiveDto requestDto)
@@ -260,10 +192,6 @@ public class UserController {
                                 ApiMessage.ACCOUNT_DELETED));
         }
 
-        /**
-         * Cancel deletion request
-         * POST /api/v1/users/account/delete-cancel
-         */
         @PostMapping("/account/delete-cancel")
         public ResponseEntity<ApiResponseFormatter<Void>> cancelDeletionRequest()
                         throws NotFoundException {
@@ -280,25 +208,20 @@ public class UserController {
 
         // ==================== SEND OTP ====================
 
-        /**
-         * Send OTP to user's contact (email/phone)
-         * POST /api/v1/users/otp/send
-         * Body: { contact }
-         * 
-         * @throws NotFoundException
-         */
         @PostMapping("/otp/{email}/send")
         public ResponseEntity<ApiResponseFormatter<Void>> sendOtp(@PathVariable String email,
                         @RequestParam String otpType) throws NotFoundException {
 
+                String decodedEmail = UrlEncoderUtil.decode(email);
+
                 if (!OtpType.isValid(otpType)) {
                         throw new ValidationException("Otp type mismatch");
                 }
-                userWriteService.sendOtp(email, otpType);
+                userWriteService.sendOtp(decodedEmail, otpType);
 
                 return ResponseEntity.ok(ApiResponseFormatter.formatter(
                                 HttpStatus.OK.value(),
-                                "OTP sent successfully to " + email));
+                                "OTP sent successfully to " + decodedEmail));
         }
 
 }

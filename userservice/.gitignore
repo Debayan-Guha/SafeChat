@@ -31,3 +31,6 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Properties file ###
+userservice/src/main/resources/application-dev.yml

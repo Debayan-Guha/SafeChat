@@ -72,7 +72,7 @@ public class ChatWebSocketService {
                                 .orElseThrow(() -> new NotFoundException(ApiMessage.CONVERSATION_NOT_FOUND));
 
                 // Create message
-                MessageDocument message = MessageToDocument.convert(requestDto);
+                MessageDocument message = MessageToDocument.convert(userId, requestDto);
 
                 // Save message
                 MessageDocument savedMessage = OperationExecutor.dbSaveAndReturn(
@@ -428,11 +428,6 @@ public class ChatWebSocketService {
                 String decryptToken = aesEncryption.decrypt(encryptToken);
                 String userId = (String) jwtUtils.extractAllClaims(decryptToken).get("uid");
 
-                // Verify the creator in the request matches the authenticated user
-                if (!userId.equals(requestDto.getConversationCreate().getCreatorId())) {
-                        throw new ValidationException("Creator ID does not match authenticated user");
-                }
-
                 // Ensure participants list includes the creator
                 List<String> participants = requestDto.getConversationCreate().getParticipantsId();
                 if (!participants.contains(userId)) {
@@ -456,7 +451,7 @@ public class ChatWebSocketService {
                 }
 
                 // Build and save the conversation document
-                ConversationDocument conversation = ConversationToDocument.convert(requestDto.getConversationCreate());
+                ConversationDocument conversation = ConversationToDocument.convert(userId,requestDto.getConversationCreate());
 
                 ConversationDocument savedConversation = OperationExecutor.dbSaveAndReturn(
                                 () -> conversationDbService.save(conversation),
@@ -465,7 +460,7 @@ public class ChatWebSocketService {
                 // Build and save the initial message
                 MessageDocument message = MessageDocument.builder()
                                 .conversationId(savedConversation.getId())
-                                .senderId(requestDto.getMessageCreate().getSenderId())
+                                .senderId(userId)
                                 .encryptedMessage(requestDto.getMessageCreate().getEncryptedMessage())
                                 .sendAt(LocalDateTime.now())
                                 .expireAt((requestDto.getMessageCreate().getExpirySeconds() != null

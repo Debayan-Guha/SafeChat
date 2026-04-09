@@ -8,10 +8,10 @@ import com.safechat.chatservice.dto.request.create.ConversationMesssageCreateReq
 
 public class ConversationToDocument {
     
-    public static ConversationDocument convert(ConversationCreate dto){
+    public static ConversationDocument convert(String userId,ConversationCreate dto){
         return ConversationDocument.builder()
                                 .participants(Set.copyOf(dto.getParticipantsId()))
-                                .creatorId(dto.getCreatorId())
+                                .creatorId(userId)
                                 .createdAt(LocalDateTime.now())
                                 .build();
     }

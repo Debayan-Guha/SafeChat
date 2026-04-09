@@ -1,6 +1,5 @@
 package com.safechat.chatservice.dto.request.create;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 import jakarta.validation.Valid;
@@ -25,9 +24,6 @@ public class ConversationMesssageCreateRequestDto {
     @Setter
     public static class ConversationCreate {
 
-        @NotBlank
-        private String creatorId;
-
         @NotNull
         private List<String> participantsId;
     }
@@ -35,9 +31,6 @@ public class ConversationMesssageCreateRequestDto {
     @Getter
     @Setter
     public static class MessageCreate {
-
-        @NotBlank
-        private String senderId;
 
         @NotBlank
         private String encryptedMessage;
