@@ -167,6 +167,8 @@ public class UserWriteService {
         UserEntity updatedUser = OperationExecutor.dbSaveAndReturn(() -> userDbService.save(userEntity), SERVICE_NAME,
                 METHOD_NAME);
 
+        emailService.sendProfileUpdateConfirmation(updatedUser.getEmail(), updatedUser.getUserName());
+
         return OperationExecutor.map(() -> UserToDto.convert(updatedUser), SERVICE_NAME, METHOD_NAME);
     }
 
@@ -316,7 +318,5 @@ public class UserWriteService {
             throw new RuntimeException("Failed to send OTP. Please try again.", e);
         }
     }
-
-    
 
 }

@@ -109,6 +109,105 @@ public class EmailService {
     }
 
     @Async
+    public void sendProfileUpdateConfirmation(String toEmail, String displayName) {
+        try {
+            MimeMessage mimeMessage = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
+
+            helper.setTo(toEmail);
+            helper.setSubject("Profile Updated - SafeChat");
+
+            String htmlContent = String.format(
+                    """
+                            <!DOCTYPE html>
+                            <html>
+                            <head>
+                                <style>
+                                    @keyframes fadeIn {
+                                        from { opacity: 0; transform: translateY(20px); }
+                                        to { opacity: 1; transform: translateY(0); }
+                                    }
+                                    @keyframes checkmark {
+                                        0%% { transform: scale(0); }
+                                        50%% { transform: scale(1.2); }
+                                        100%% { transform: scale(1); }
+                                    }
+                                    .container {
+                                        font-family: Arial, sans-serif;
+                                        max-width: 600px;
+                                        margin: 0 auto;
+                                        padding: 20px;
+                                        animation: fadeIn 0.6s ease-in;
+                                    }
+                                    .header {
+                                        background: linear-gradient(135deg, #0891B2, #06B6D4);
+                                        color: white;
+                                        padding: 20px;
+                                        text-align: center;
+                                        border-radius: 10px 10px 0 0;
+                                    }
+                                    .content {
+                                        background: #f9fafb;
+                                        padding: 30px;
+                                        border-radius: 0 0 10px 10px;
+                                        text-align: center;
+                                    }
+                                    .check-icon {
+                                        font-size: 64px;
+                                        animation: checkmark 0.6s ease-in-out;
+                                    }
+                                    .info-box {
+                                        background: #F0F9FF;
+                                        border-left: 4px solid #0891B2;
+                                        padding: 15px;
+                                        margin: 20px 0;
+                                        text-align: left;
+                                        border-radius: 8px;
+                                    }
+                                    .button {
+                                        background: linear-gradient(135deg, #0891B2, #06B6D4);
+                                        color: white;
+                                        padding: 12px 24px;
+                                        text-decoration: none;
+                                        border-radius: 8px;
+                                        display: inline-block;
+                                        margin: 20px 0;
+                                    }
+                                </style>
+                            </head>
+                            <body>
+                                <div class="container">
+                                    <div class="header">
+                                        <h2>✅ Profile Updated</h2>
+                                    </div>
+                                    <div class="content">
+                                        <div class="check-icon">✅</div>
+                                        <h3>Hello %s!</h3>
+                                        <p>Your SafeChat profile has been successfully updated.</p>
+                                        <div class="info-box">
+                                            <strong>📝 Changes Applied:</strong><br>
+                                            • Your profile information has been updated<br>
+                                            • Your account security remains unchanged<br>
+                                            • You can continue using SafeChat as usual
+                                        </div>
+                                        <p>If you did not make these changes, please contact support immediately.</p>
+                                        <hr>
+                                        <p style="font-size: 12px; color: #6B7280;">SafeChat - Your Privacy-First Messaging App</p>
+                                    </div>
+                                </div>
+                            </body>
+                            </html>
+                            """,
+                    displayName);
+
+            helper.setText(htmlContent, true);
+            mailSender.send(mimeMessage);
+        } catch (Exception e) {
+            logger.warn("Failed to send profile update confirmation email to " + toEmail + ": " + e.getMessage());
+        }
+    }
+
+    @Async
     public void sendAccountDeletionRequestOtp(String toEmail, int otp) {
         try {
             MimeMessage mimeMessage = mailSender.createMimeMessage();
