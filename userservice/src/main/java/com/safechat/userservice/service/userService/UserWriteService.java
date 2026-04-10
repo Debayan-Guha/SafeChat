@@ -2,6 +2,7 @@ package com.safechat.userservice.service.userService;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Random;
@@ -21,14 +22,17 @@ import com.safechat.userservice.dto.request.OtpReceiveDto;
 import com.safechat.userservice.dto.request.create.UserAccountCreateDto;
 import com.safechat.userservice.dto.request.update.UserProfileUpdateDto;
 import com.safechat.userservice.dto.response.UserResponseDto;
+import com.safechat.userservice.entity.PendingUserDeletionEntity;
 import com.safechat.userservice.entity.UserEntity;
 import com.safechat.userservice.exception.ApplicationException.AlreadyExistsException;
 import com.safechat.userservice.exception.ApplicationException.NotFoundException;
 import com.safechat.userservice.exception.ApplicationException.ValidationException;
 import com.safechat.userservice.jwt.JwtUtils;
+import com.safechat.userservice.kafka.KafkaProducer;
 import com.safechat.userservice.mapper.toDto.UserToDto;
 import com.safechat.userservice.service.CachedService;
 import com.safechat.userservice.service.EmailService;
+import com.safechat.userservice.service.dbService.PendingUserDeletionDbService;
 import com.safechat.userservice.service.dbService.UserDbService;
 import com.safechat.userservice.utility.OperationExecutor;
 import com.safechat.userservice.utility.Enumeration.OtpType;
@@ -55,13 +59,16 @@ public class UserWriteService {
     private final UserReadService userReadService;
     private final CachedService cachedService;
     private final EmailService emailService;
+    private final PendingUserDeletionDbService pendingUserDeletionDbService;
+    private final KafkaProducer kafkaProducer;
     private final JwtUtils jwtUtils;
 
     public UserWriteService(UserDbService userDbService,
             AesEncryption aesEncryption, Pbkdf2Encoder pbkdf2Encoder,
             BcryptEncoder bcryptEncoder,
             CachedService cachedService, JwtUtils jwtUtils, EmailService emailService,
-            UserReadService userReadService) {
+            UserReadService userReadService, KafkaProducer kafkaProducer,
+            PendingUserDeletionDbService pendingUserDeletionDbService) {
         this.userDbService = userDbService;
         this.aesEncryption = aesEncryption;
         this.bcryptEncoder = bcryptEncoder;
@@ -70,6 +77,8 @@ public class UserWriteService {
         this.jwtUtils = jwtUtils;
         this.emailService = emailService;
         this.userReadService = userReadService;
+        this.kafkaProducer = kafkaProducer;
+        this.pendingUserDeletionDbService = pendingUserDeletionDbService;
     }
 
     @Transactional
@@ -90,8 +99,29 @@ public class UserWriteService {
         userReadService.isDisplayNameExists(requestDto.getDisplayName());
         userReadService.isEmailExists(requestDto.getEmail().toLowerCase());
 
+        // Generate unique ID with collision check
+        String userId;
+        boolean idExists;
+        do {
+            userId = "USR_" + UUID.randomUUID().toString();
+
+            final String finalUserId = userId; // Create effectively final variable
+
+            // Check if ID already exists in users table
+            Specification<UserEntity> checkUserSpec = (root, query, cb) -> cb.equal(root.get("id"), finalUserId);
+            idExists = userDbService.exists(checkUserSpec);
+
+            // Check if ID already exists in pending_deletions table
+            if (!idExists) {
+                Specification<PendingUserDeletionEntity> checkPendingSpec = (root, query, cb) -> cb
+                        .equal(root.get("userId"), finalUserId);
+                idExists = pendingUserDeletionDbService.exists(checkPendingSpec);
+            }
+
+        } while (idExists);
+
         UserEntity userEntity = UserEntity.builder()
-                .id("USR_" + UUID.randomUUID().toString())
+                .id(userId)
                 .userName(requestDto.getUserName())
                 .displayName(requestDto.getDisplayName())
                 .email(requestDto.getEmail().toLowerCase())
@@ -103,7 +133,6 @@ public class UserWriteService {
         OperationExecutor.dbSave(() -> userDbService.save(userEntity), SERVICE_NAME, METHOD_NAME);
 
         emailService.sendWelcomeEmail(requestDto.getEmail().toLowerCase(), requestDto.getUserName());
-
     }
 
     @Transactional
@@ -371,6 +400,8 @@ public class UserWriteService {
 
                 // AFTER successful deletion, send Kafka event
                 // kafkaProducer.sendUserDeletionEvent(userIds);
+
+                kafkaProducer.sendUserDeletionEventBatch(new ArrayList<>(userIds));
 
                 page++;
             }
