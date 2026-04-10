@@ -14,6 +14,7 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+import com.safechat.userservice.service.authService.AuthService;
 import com.safechat.userservice.utility.encryption.AesEncryption;
 
 import io.jsonwebtoken.Claims;
@@ -27,10 +28,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final AesEncryption aesEncryption;
     private final JwtUtils jwtUtils;
+    private final AuthService authService;
 
-    JwtAuthenticationFilter(AesEncryption aesEncryption, JwtUtils jwtUtils) {
+    JwtAuthenticationFilter(AesEncryption aesEncryption, JwtUtils jwtUtils, AuthService authService) {
         this.aesEncryption = aesEncryption;
         this.jwtUtils = jwtUtils;
+        this.authService = authService;
     }
 
     @Override
@@ -42,31 +45,43 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (authorizationHeader != null && authorizationHeader.startsWith("Bearer ")) {
 
             String encryptToken = authorizationHeader.substring(7);
-                try {
-                    if (jwtUtils.tokenVerification(encryptToken)) {
+            try {
+                if (authService.verifyAndValidateToken(encryptToken)) {
 
-                        Claims claims = jwtUtils.extractAllClaims(aesEncryption.decrypt(encryptToken));
-                        String role = (String) claims.get("role");
+                    Claims claims = jwtUtils.extractAllClaims(aesEncryption.decrypt(encryptToken));
+                    String role = (String) claims.get("role");
 
-                        if (role != null) {
-                            String uid = (String) claims.get("uid");
+                    if (role != null) {
+                        String uid = (String) claims.get("uid");
 
-                            List<GrantedAuthority> authorities = new ArrayList<>();
-                            authorities.add(new SimpleGrantedAuthority("ROLE_" + role));
+                        List<GrantedAuthority> authorities = new ArrayList<>();
+                        authorities.add(new SimpleGrantedAuthority("ROLE_" + role));
 
-                            UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(uid, encryptToken,
-                                    authorities);
+                        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(uid,
+                                encryptToken,
+                                authorities);
 
-                            auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                            SecurityContextHolder.getContext().setAuthentication(auth);
-                        }
+                        auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                        SecurityContextHolder.getContext().setAuthentication(auth);
                     }
-                } catch (Exception e) {
+                } else {
                     response.setStatus(HttpStatus.UNAUTHORIZED.value());
+                    response.setContentType("application/json");
+                    response.getWriter().write(
+                            "{\"statusCode\":401,\"message\":\"Invalid or expired token\",\"timestamp\":"
+                                    + System.currentTimeMillis() + "}");
                     return;
                 }
+            } catch (Exception e) {
+                response.setStatus(HttpStatus.UNAUTHORIZED.value());
+                    response.setContentType("application/json");
+                    response.getWriter().write(
+                            "{\"statusCode\":401,\"message\":\"Invalid or expired token\",\"timestamp\":"
+                                    + System.currentTimeMillis() + "}");
+                    return;
+            }
         }
-        filterChain.doFilter(request, response); 
+        filterChain.doFilter(request, response);
     }
 
 }

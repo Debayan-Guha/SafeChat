@@ -24,6 +24,7 @@ import com.safechat.userservice.dto.response.UserResponseDto;
 import com.safechat.userservice.entity.UserEntity;
 import com.safechat.userservice.exception.ApplicationException.AlreadyExistsException;
 import com.safechat.userservice.exception.ApplicationException.NotFoundException;
+import com.safechat.userservice.exception.ApplicationException.ValidationException;
 import com.safechat.userservice.jwt.JwtUtils;
 import com.safechat.userservice.mapper.toDto.UserToDto;
 import com.safechat.userservice.service.CachedService;
@@ -35,9 +36,9 @@ import com.safechat.userservice.utility.Enumeration.Status;
 import com.safechat.userservice.utility.api.ApiMessage;
 import com.safechat.userservice.utility.encryption.AesEncryption;
 import com.safechat.userservice.utility.encryption.BcryptEncoder;
+import com.safechat.userservice.utility.encryption.Pbkdf2Encoder;
 
 import jakarta.transaction.Transactional;
-import jakarta.validation.ValidationException;
 
 @Service
 public class UserWriteService {
@@ -49,6 +50,7 @@ public class UserWriteService {
 
     private final UserDbService userDbService;
     private final AesEncryption aesEncryption;
+    private final Pbkdf2Encoder pbkdf2Encoder;
     private final BcryptEncoder bcryptEncoder;
     private final UserReadService userReadService;
     private final CachedService cachedService;
@@ -56,13 +58,14 @@ public class UserWriteService {
     private final JwtUtils jwtUtils;
 
     public UserWriteService(UserDbService userDbService,
-            AesEncryption aesEncryption,
+            AesEncryption aesEncryption, Pbkdf2Encoder pbkdf2Encoder,
             BcryptEncoder bcryptEncoder,
             CachedService cachedService, JwtUtils jwtUtils, EmailService emailService,
             UserReadService userReadService) {
         this.userDbService = userDbService;
         this.aesEncryption = aesEncryption;
         this.bcryptEncoder = bcryptEncoder;
+        this.pbkdf2Encoder = pbkdf2Encoder;
         this.cachedService = cachedService;
         this.jwtUtils = jwtUtils;
         this.emailService = emailService;
@@ -93,7 +96,7 @@ public class UserWriteService {
                 .displayName(requestDto.getDisplayName())
                 .email(requestDto.getEmail().toLowerCase())
                 .publicKey(requestDto.getPublicKey())
-                .encryptedPrivateKey(bcryptEncoder.bCryptPasswordEncoder().encode(requestDto.getPrivateKey()))
+                .encryptedPrivateKey(pbkdf2Encoder.pbkd2Encoder().encode(requestDto.getPrivateKey()))
                 .status(Status.ACTIVE)
                 .password(bcryptEncoder.bCryptPasswordEncoder().encode(requestDto.getPassword())).build();
 
@@ -169,8 +172,8 @@ public class UserWriteService {
         if (requestDto.getKeysUpdate() != null) {
 
             userEntity.setPublicKey(requestDto.getKeysUpdate().getPublicKey());
-            userEntity.setEncryptedPrivateKey(
-                    bcryptEncoder.bCryptPasswordEncoder().encode(requestDto.getKeysUpdate().getPrivateKey()));
+            userEntity
+                    .setEncryptedPrivateKey(pbkdf2Encoder.pbkd2Encoder().encode(requestDto.getKeysUpdate().getPrivateKey()));
         }
 
         // Save and Return

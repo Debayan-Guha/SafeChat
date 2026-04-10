@@ -22,7 +22,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/v1/chats")
+@RequestMapping("/api/v1/chatservice")
 public class ChatRestController {
 
         private final ChatReadService chatReadService;

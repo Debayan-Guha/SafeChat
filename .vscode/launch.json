@@ -9,6 +9,16 @@
             "projectName": "userservice",
             "args": "",
             "envFile": "${workspaceFolder}/.env"
+        },
+        {
+            "type": "java",
+            "name": "Spring Boot-ChatserviceApplication<chatservice>",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "mainClass": "com.safechat.chatservice.ChatserviceApplication",
+            "projectName": "chatservice",
+            "args": "",
+            "envFile": "${workspaceFolder}/.env"
         }
     ]
 }

@@ -29,7 +29,6 @@ import com.safechat.userservice.utility.encryption.BcryptEncoder;
 
 import io.jsonwebtoken.Claims;
 import jakarta.transaction.Transactional;
-import jakarta.validation.Valid;
 import jakarta.persistence.criteria.Predicate;
 
 @Service
@@ -198,4 +197,33 @@ public class AuthService {
         }
     }
 
+    public boolean verifyAndValidateToken(String encryptToken) {
+        final String METHOD_NAME = "verifyAndValidateToken";
+
+        String decryptToken = aesEncryption.decrypt(encryptToken);
+
+        if (!jwtUtils.tokenVerification(decryptToken)) {
+            return false;
+        }
+
+        Claims claims = jwtUtils.extractAllClaims(decryptToken);
+        String userId = (String) claims.get("uid");
+        String jti = (String) claims.get("jti");
+        String role = (String) claims.get("role");
+
+        // Use different cache key based on role
+        String cacheKey;
+        if ("ADMIN".equals(role)) {
+            cacheKey = String.format("user:auth:token:jti:admin:uid:%s", userId);
+        } else {
+            cacheKey = String.format("user:auth:token:jti:uid:%s", userId);
+        }
+
+        String cachedJti = OperationExecutor.redisGet(
+                () -> cachedService.getFromCache(cacheKey, String.class),
+                SERVICE_NAME, METHOD_NAME);
+
+        return cachedJti != null && cachedJti.equals(jti);
+
+    }
 }

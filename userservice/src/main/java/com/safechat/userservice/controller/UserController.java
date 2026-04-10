@@ -172,7 +172,7 @@ public class UserController {
         public ResponseEntity<ApiResponseFormatter<List<UserResponseDto>>> searchUsers(
                         @Parameter(description = "Display name to search", required = true, example = "john_doe") @RequestParam String displayName,
                         @Parameter(description = "Page number (0-indexed)", example = "1") @RequestParam(defaultValue = "1") int page,
-                        @Parameter(description = "Number of items per page", example = "20") @RequestParam(defaultValue = "20") int size) {
+                        @Parameter(description = "Number of items per page", example = "20") @RequestParam(defaultValue = "20") int size) throws NotFoundException {
 
                 if (page < 0 || size <= 0) {
                         throw new ValidationException(ApiMessage.PAGE_VALIDATION_ERROR);

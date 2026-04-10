@@ -78,9 +78,9 @@ class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(ValidationException.class)
-    public ResponseEntity<ApiResponseFormatter> handleValidationException(String msg) {
+    public ResponseEntity<ApiResponseFormatter> handleValidationException(ValidationException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ApiResponseFormatter.formatter(HttpStatus.BAD_REQUEST.value(), msg));
+                .body(ApiResponseFormatter.formatter(HttpStatus.BAD_REQUEST.value(), ex.getMessage()));
     }
 
     @ExceptionHandler(ExternalApiException.class)
