@@ -173,7 +173,8 @@ public class UserWriteService {
 
             userEntity.setPublicKey(requestDto.getKeysUpdate().getPublicKey());
             userEntity
-                    .setEncryptedPrivateKey(pbkdf2Encoder.pbkd2Encoder().encode(requestDto.getKeysUpdate().getPrivateKey()));
+                    .setEncryptedPrivateKey(
+                            pbkdf2Encoder.pbkd2Encoder().encode(requestDto.getKeysUpdate().getPrivateKey()));
         }
 
         // Save and Return
@@ -266,6 +267,10 @@ public class UserWriteService {
         UserEntity userEntity = OperationExecutor
                 .dbGet(() -> userDbService.getUser(getUserById), SERVICE_NAME, METHOD_NAME)
                 .orElseThrow(() -> new NotFoundException(ApiMessage.USER_NOT_FOUND));
+
+        if (!userEntity.isDeletionScheduled()) {
+            throw new ValidationException("No deletion request found. Please request deletion first.");
+        }
 
         Integer cachedOtp = Optional
                 .ofNullable(cachedService.getFromCache(cacheOtpKey.apply(userEntity.getEmail()), Integer.class))

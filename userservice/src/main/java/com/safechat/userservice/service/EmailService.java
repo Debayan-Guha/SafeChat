@@ -427,8 +427,9 @@ public class EmailService {
                                         to { opacity: 1; transform: translateY(0); }
                                     }
                                     @keyframes bounce {
-                                        0%, 100%% { transform: translateY(0); }
+                                        0%% { transform: translateY(0); }
                                         50%% { transform: translateY(-10px); }
+                                        100%% { transform: translateY(0); }
                                     }
                                     .container {
                                         font-family: Arial, sans-serif;
