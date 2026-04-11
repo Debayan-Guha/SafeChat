@@ -163,7 +163,7 @@ public class UserWriteService {
                     .ofNullable(cachedService.getFromCache(cacheKeyBuilder.apply(newEmail), Integer.class))
                     .orElseThrow(() -> new NotFoundException("OTP expired or not found for new email"));
 
-            if (cachedOtp != otp) {
+            if (!cachedOtp.equals(otp)) {
                 throw new ValidationException("OTP mismatch for email update");
             }
 
