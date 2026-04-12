@@ -12,6 +12,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import org.springframework.context.annotation.Lazy;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.PageRequest;
@@ -37,6 +38,7 @@ import com.safechat.userservice.service.dbService.UserDbService;
 import com.safechat.userservice.utility.OperationExecutor;
 import com.safechat.userservice.utility.Enumeration.OtpType;
 import com.safechat.userservice.utility.Enumeration.Status;
+import com.safechat.userservice.utility.Enumeration.UserDeletionStatus;
 import com.safechat.userservice.utility.api.ApiMessage;
 import com.safechat.userservice.utility.encryption.AesEncryption;
 import com.safechat.userservice.utility.encryption.BcryptEncoder;
@@ -49,8 +51,8 @@ public class UserWriteService {
 
     private final String SERVICE_NAME = "UserWriteService";
 
-    private static final int BATCH_SIZE = 1000;
     private final AtomicBoolean isRunning = new AtomicBoolean(false);
+    private final UserWriteService self;
 
     private final UserDbService userDbService;
     private final AesEncryption aesEncryption;
@@ -68,7 +70,8 @@ public class UserWriteService {
             BcryptEncoder bcryptEncoder,
             CachedService cachedService, JwtUtils jwtUtils, EmailService emailService,
             UserReadService userReadService, KafkaProducer kafkaProducer,
-            PendingUserDeletionDbService pendingUserDeletionDbService) {
+            PendingUserDeletionDbService pendingUserDeletionDbService,
+            @Lazy UserWriteService self) {
         this.userDbService = userDbService;
         this.aesEncryption = aesEncryption;
         this.bcryptEncoder = bcryptEncoder;
@@ -79,6 +82,7 @@ public class UserWriteService {
         this.userReadService = userReadService;
         this.kafkaProducer = kafkaProducer;
         this.pendingUserDeletionDbService = pendingUserDeletionDbService;
+        this.self = self;
     }
 
     @Transactional
@@ -366,6 +370,10 @@ public class UserWriteService {
     }
 
     public void deleteExpiredAccounts() {
+
+        final String METHOD_NAME = "deleteExpiredAccounts";
+        int BATCH_SIZE = 1000;
+
         if (!isRunning.compareAndSet(false, true)) {
             return;
         }
@@ -384,7 +392,8 @@ public class UserWriteService {
                     return cb.and(isScheduled, timePassed);
                 };
 
-                List<UserEntity> usersToDelete = userDbService.getUsers(spec, pageable).getContent();
+                List<UserEntity> usersToDelete = OperationExecutor
+                        .dbGet(() -> userDbService.getUsers(spec, pageable).getContent(), SERVICE_NAME, METHOD_NAME);
 
                 if (usersToDelete.isEmpty()) {
                     break;
@@ -395,11 +404,17 @@ public class UserWriteService {
                         .map(UserEntity::getId)
                         .collect(Collectors.toSet());
 
-                // Delete the batch
-                deleteBatch(usersToDelete);
+                List<PendingUserDeletionEntity> entities = userIds.stream()
+                        .map(userId -> PendingUserDeletionEntity.builder()
+                                .userId(userId)
+                                .status(UserDeletionStatus.PENDING)
+                                .build())
+                        .collect(Collectors.toList());
+                OperationExecutor.dbSave(() -> pendingUserDeletionDbService.saveAll(entities), SERVICE_NAME,
+                        METHOD_NAME);
 
-                // AFTER successful deletion, send Kafka event
-                // kafkaProducer.sendUserDeletionEvent(userIds);
+                // Delete the batch
+                self.deleteBatch(usersToDelete, METHOD_NAME);
 
                 kafkaProducer.sendUserDeletionEventBatch(new ArrayList<>(userIds));
 
@@ -411,8 +426,52 @@ public class UserWriteService {
     }
 
     @Transactional
-    public void deleteBatch(List<UserEntity> usersToDelete) {
-        userDbService.deleteAll(usersToDelete);
+    public void deleteBatch(List<UserEntity> usersToDelete, String METHOD_NAME) {
+        OperationExecutor.dbRemove(() -> userDbService.deleteAll(usersToDelete), SERVICE_NAME, METHOD_NAME);
+    }
+
+    public void processStuckPendingRecords() {
+
+        final String METHOD_NAME = "processStuckPendingRecords";
+        int BATCH_SIZE = 1000;
+
+        Specification<PendingUserDeletionEntity> spec = (root, query, cb) -> cb.and(
+                cb.equal(root.get("status"), UserDeletionStatus.PENDING),
+                cb.lessThan(root.get("createdAt"), LocalDateTime.now().minusMinutes(10)));
+
+        int page = 0;
+
+        while (true) {
+            Pageable pageable = PageRequest.of(page, BATCH_SIZE);
+
+            List<PendingUserDeletionEntity> stuckRecords = OperationExecutor.dbGet(() -> pendingUserDeletionDbService
+                    .getPendingDeletions(spec, pageable)
+                    .getContent(), SERVICE_NAME, METHOD_NAME);
+
+            if (stuckRecords.isEmpty()) {
+                break;
+            }
+
+            List<String> userIds = stuckRecords.stream()
+                    .map(PendingUserDeletionEntity::getUserId)
+                    .collect(Collectors.toList());
+
+            // Check which users still exist in the users table
+            Specification<UserEntity> existsSpec = (root, query, cb) -> root.get("id").in(userIds);
+            List<UserEntity> existingUsers = OperationExecutor.dbGet(
+                    () -> userDbService.getUsers(existsSpec, Pageable.unpaged()).getContent(), SERVICE_NAME,
+                    METHOD_NAME);
+
+            // Delete any that are still present (means step 2 failed previously)
+            if (!existingUsers.isEmpty()) {
+                self.deleteBatch(existingUsers, METHOD_NAME);
+            }
+
+            // Send the full batch to Kafka in one call
+            kafkaProducer.sendUserDeletionEventBatch(userIds);
+
+            page++;
+        }
     }
 
     @Transactional

@@ -36,6 +36,12 @@ public class ScheduledTaskInitializer implements CommandLineRunner {
                 () -> kafkaService.retryFailedDeletions(),
                 "0 0 */12 * * *");
 
+        schedulerService.registerTask(
+                ScheduledTaskType.RETRY_STUCK_PENDING,
+                () -> userWriteService.processStuckPendingRecords(),
+                "0 */10 * * * *" // Every 10 minutes
+        );
+
         // Add more tasks as needed
         // schedulerService.registerTask("cleanupLogs", () -> cleanupService.clean(), "0
         // 0 2 * * *");

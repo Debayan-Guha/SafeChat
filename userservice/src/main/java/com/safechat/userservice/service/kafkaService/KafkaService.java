@@ -16,19 +16,19 @@ import com.safechat.userservice.dto.kafkaEvent.ReceiveEventUserDeletionStatus;
 import com.safechat.userservice.entity.PendingUserDeletionEntity;
 import com.safechat.userservice.kafka.KafkaProducer;
 import com.safechat.userservice.service.dbService.PendingUserDeletionDbService;
+import com.safechat.userservice.utility.OperationExecutor;
 import com.safechat.userservice.utility.Enumeration.UserDeletionStatus;
-
 
 @Service
 public class KafkaService {
 
-    private static final int BATCH_SIZE = 1000;
+    private static final String SERVICE_NAME = "KafkaService";
 
     private final PendingUserDeletionDbService pendingUserDeletionDbService;
     private final KafkaProducer kafkaProducer;
 
     public KafkaService(PendingUserDeletionDbService pendingUserDeletionDbService,
-           @Lazy KafkaProducer kafkaProducer) {
+            @Lazy KafkaProducer kafkaProducer) {
         this.pendingUserDeletionDbService = pendingUserDeletionDbService;
         this.kafkaProducer = kafkaProducer;
     }
@@ -115,24 +115,35 @@ public class KafkaService {
     }
 
     public void retryFailedDeletions() {
+
+        final String METHOD_NAME = "retryFailedDeletions";
+        int BATCH_SIZE = 1000;
+
         Specification<PendingUserDeletionEntity> spec = (root, query, cb) -> cb.or(
                 cb.equal(root.get("status"), UserDeletionStatus.KAFKA_SENT_FAILED),
                 cb.equal(root.get("status"), UserDeletionStatus.CHAT_FAILED));
 
-        Pageable pageable = PageRequest.of(0, BATCH_SIZE);
+        int page = 0;
 
-        List<PendingUserDeletionEntity> failedEntities = pendingUserDeletionDbService
-                .getPendingDeletions(spec, pageable).getContent();
+        while (true) {
+            Pageable pageable = PageRequest.of(page, BATCH_SIZE);
 
-        if (failedEntities.isEmpty()) {
-            return;
+            List<PendingUserDeletionEntity> failedEntities = OperationExecutor.dbGet(() -> pendingUserDeletionDbService
+                    .getPendingDeletions(spec, pageable)
+                    .getContent(), SERVICE_NAME, METHOD_NAME);
+
+            if (failedEntities.isEmpty()) {
+                break;
+            }
+
+            List<String> userIds = failedEntities.stream()
+                    .map(PendingUserDeletionEntity::getUserId)
+                    .collect(Collectors.toList());
+
+            kafkaProducer.sendUserDeletionEventBatch(userIds);
+
+            page++;
         }
-
-        List<String> userIds = failedEntities.stream()
-                .map(PendingUserDeletionEntity::getUserId)
-                .collect(Collectors.toList());
-
-        kafkaProducer.sendUserDeletionEventBatch(userIds);
     }
 
 }

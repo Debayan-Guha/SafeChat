@@ -39,14 +39,16 @@ public interface Enumeration {
     public interface ScheduledTaskType {
         String DELETE_EXPIRED_ACCOUNTS = "DELETE_EXPIRED_ACCOUNTS";
         String RETRY_FAILED_KAFKA_DELETIONS = "RETRY_FAILED_KAFKA_DELETIONS";
+        String RETRY_STUCK_PENDING = "RETRY_STUCK_PENDING";
 
         static boolean isValid(String value) {
             return Stream.of(
-                    DELETE_EXPIRED_ACCOUNTS,RETRY_FAILED_KAFKA_DELETIONS).anyMatch(type -> type.equals(value));
+                    DELETE_EXPIRED_ACCOUNTS,RETRY_FAILED_KAFKA_DELETIONS,RETRY_STUCK_PENDING).anyMatch(type -> type.equals(value));
         }
     }
 
     public interface UserDeletionStatus {
+        String PENDING="PENDING";
         String KAFKA_SENT = "KAFKA_SENT"; 
         String KAFKA_SENT_FAILED = "KAFKA_SENT_FAILED";  
         String CHAT_SUCCESS = "CHAT_SUCCESS";
