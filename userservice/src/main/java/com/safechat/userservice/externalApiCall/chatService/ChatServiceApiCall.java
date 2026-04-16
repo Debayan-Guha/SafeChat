@@ -19,7 +19,7 @@ public class ChatServiceApiCall {
     private final WebClient webClient;
     private final String chatServiceUrl;
     private final String apiKeyToken;
-    private final String serviceName = "USER_SERVICE";
+    private final String serviceName = "USER-SERVICE";
 
     public ChatServiceApiCall(WebClient.Builder webClientBuilder,
             @Value("${chat.service.url}") String chatServiceUrl,

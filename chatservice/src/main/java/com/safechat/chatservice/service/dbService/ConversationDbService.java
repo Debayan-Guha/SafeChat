@@ -4,6 +4,7 @@ import com.safechat.chatservice.document.ConversationDocument;
 import com.safechat.chatservice.repository.ConversationRepo;
 import org.springframework.data.mongodb.core.MongoTemplate;
 import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -46,5 +47,9 @@ public class ConversationDbService {
 
     public void delete(Query query) {
         mongoTemplate.remove(query, ConversationDocument.class);
+    }
+
+    public void updateMulti(Query query, Update update) {
+        mongoTemplate.updateMulti(query, update, ConversationDocument.class);
     }
 }
