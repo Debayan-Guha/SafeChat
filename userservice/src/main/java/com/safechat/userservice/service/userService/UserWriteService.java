@@ -2,20 +2,10 @@ package com.safechat.userservice.service.userService;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Optional;
 import java.util.Random;
-import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
-import java.util.stream.Collectors;
-
-import org.springframework.context.annotation.Lazy;
-import jakarta.persistence.criteria.Predicate;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 
@@ -29,7 +19,6 @@ import com.safechat.userservice.exception.ApplicationException.AlreadyExistsExce
 import com.safechat.userservice.exception.ApplicationException.NotFoundException;
 import com.safechat.userservice.exception.ApplicationException.ValidationException;
 import com.safechat.userservice.jwt.JwtUtils;
-import com.safechat.userservice.kafka.KafkaProducer;
 import com.safechat.userservice.mapper.toDto.UserToDto;
 import com.safechat.userservice.service.CachedService;
 import com.safechat.userservice.service.EmailService;
@@ -51,9 +40,6 @@ public class UserWriteService {
 
     private final String SERVICE_NAME = "UserWriteService";
 
-    private final AtomicBoolean isRunning = new AtomicBoolean(false);
-    private final UserWriteService self;
-
     private final UserDbService userDbService;
     private final AesEncryption aesEncryption;
     private final Pbkdf2Encoder pbkdf2Encoder;
@@ -62,16 +48,14 @@ public class UserWriteService {
     private final CachedService cachedService;
     private final EmailService emailService;
     private final PendingUserDeletionDbService pendingUserDeletionDbService;
-    private final KafkaProducer kafkaProducer;
     private final JwtUtils jwtUtils;
 
     public UserWriteService(UserDbService userDbService,
             AesEncryption aesEncryption, Pbkdf2Encoder pbkdf2Encoder,
             BcryptEncoder bcryptEncoder,
             CachedService cachedService, JwtUtils jwtUtils, EmailService emailService,
-            UserReadService userReadService, KafkaProducer kafkaProducer,
-            PendingUserDeletionDbService pendingUserDeletionDbService,
-            @Lazy UserWriteService self) {
+            UserReadService userReadService,
+            PendingUserDeletionDbService pendingUserDeletionDbService) {
         this.userDbService = userDbService;
         this.aesEncryption = aesEncryption;
         this.bcryptEncoder = bcryptEncoder;
@@ -80,9 +64,7 @@ public class UserWriteService {
         this.jwtUtils = jwtUtils;
         this.emailService = emailService;
         this.userReadService = userReadService;
-        this.kafkaProducer = kafkaProducer;
         this.pendingUserDeletionDbService = pendingUserDeletionDbService;
-        this.self = self;
     }
 
     @Transactional
@@ -317,6 +299,15 @@ public class UserWriteService {
         OperationExecutor.redisRemove(() -> cachedService.deleteCacheByKey(cacheOtpKey.apply(userEntity.getEmail())),
                 SERVICE_NAME, METHOD_NAME);
 
+        // Step 1: Save to pending table FIRST
+        PendingUserDeletionEntity pendingEntity = PendingUserDeletionEntity.builder()
+                .userId(userId)
+                .status(UserDeletionStatus.PENDING)
+                .retryCount(0)
+                .build();
+        OperationExecutor.dbSave(() -> pendingUserDeletionDbService.save(pendingEntity), SERVICE_NAME, METHOD_NAME);
+
+        // Step 2: Delete user from User DB
         OperationExecutor.dbRemove(() -> userDbService.delete(userEntity), SERVICE_NAME, METHOD_NAME);
 
         // Send instant deletion confirmation email
@@ -366,111 +357,6 @@ public class UserWriteService {
             // STEP 4: If email fails, rollback - delete the OTP from Redis
             cachedService.deleteCacheByKey(cacheKey);
             throw new RuntimeException("Failed to send OTP. Please try again.", e);
-        }
-    }
-
-    public void deleteExpiredAccounts() {
-
-        final String METHOD_NAME = "deleteExpiredAccounts";
-        int BATCH_SIZE = 1000;
-
-        if (!isRunning.compareAndSet(false, true)) {
-            return;
-        }
-
-        try {
-            int page = 0;
-
-            while (true) {
-                Pageable pageable = PageRequest.of(page, BATCH_SIZE);
-
-                Specification<UserEntity> spec = (root, query, cb) -> {
-                    Predicate isScheduled = cb.isTrue(root.get("isDeletionScheduled"));
-                    Predicate timePassed = cb.lessThanOrEqualTo(
-                            root.get("deletionScheduledFor"),
-                            LocalDateTime.now());
-                    return cb.and(isScheduled, timePassed);
-                };
-
-                List<UserEntity> usersToDelete = OperationExecutor
-                        .dbGet(() -> userDbService.getUsers(spec, pageable).getContent(), SERVICE_NAME, METHOD_NAME);
-
-                if (usersToDelete.isEmpty()) {
-                    break;
-                }
-
-                // Collect user IDs from Set (automatically removes duplicates)
-                Set<String> userIds = usersToDelete.stream()
-                        .map(UserEntity::getId)
-                        .collect(Collectors.toSet());
-
-                List<PendingUserDeletionEntity> entities = userIds.stream()
-                        .map(userId -> PendingUserDeletionEntity.builder()
-                                .userId(userId)
-                                .status(UserDeletionStatus.PENDING)
-                                .build())
-                        .collect(Collectors.toList());
-                OperationExecutor.dbSave(() -> pendingUserDeletionDbService.saveAll(entities), SERVICE_NAME,
-                        METHOD_NAME);
-
-                // Delete the batch
-                self.deleteBatch(usersToDelete, METHOD_NAME);
-
-                kafkaProducer.sendUserDeletionEventBatch(new ArrayList<>(userIds));
-
-                page++;
-            }
-        } finally {
-            isRunning.set(false);
-        }
-    }
-
-    @Transactional
-    public void deleteBatch(List<UserEntity> usersToDelete, String METHOD_NAME) {
-        OperationExecutor.dbRemove(() -> userDbService.deleteAll(usersToDelete), SERVICE_NAME, METHOD_NAME);
-    }
-
-    public void processStuckPendingRecords() {
-
-        final String METHOD_NAME = "processStuckPendingRecords";
-        int BATCH_SIZE = 1000;
-
-        Specification<PendingUserDeletionEntity> spec = (root, query, cb) -> cb.and(
-                cb.equal(root.get("status"), UserDeletionStatus.PENDING),
-                cb.lessThan(root.get("createdAt"), LocalDateTime.now().minusMinutes(10)));
-
-        int page = 0;
-
-        while (true) {
-            Pageable pageable = PageRequest.of(page, BATCH_SIZE);
-
-            List<PendingUserDeletionEntity> stuckRecords = OperationExecutor.dbGet(() -> pendingUserDeletionDbService
-                    .getPendingDeletions(spec, pageable)
-                    .getContent(), SERVICE_NAME, METHOD_NAME);
-
-            if (stuckRecords.isEmpty()) {
-                break;
-            }
-
-            List<String> userIds = stuckRecords.stream()
-                    .map(PendingUserDeletionEntity::getUserId)
-                    .collect(Collectors.toList());
-
-            // Check which users still exist in the users table
-            Specification<UserEntity> existsSpec = (root, query, cb) -> root.get("id").in(userIds);
-            List<UserEntity> existingUsers = OperationExecutor.dbGet(
-                    () -> userDbService.getUsers(existsSpec, Pageable.unpaged()).getContent(), SERVICE_NAME,
-                    METHOD_NAME);
-
-            // Delete any that are still present (means step 2 failed previously)
-            if (!existingUsers.isEmpty()) {
-                self.deleteBatch(existingUsers, METHOD_NAME);
-            }
-
-            // Send the full batch to Kafka in one call
-            kafkaProducer.sendUserDeletionEventBatch(userIds);
-
-            page++;
         }
     }
 

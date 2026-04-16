@@ -45,12 +45,6 @@ public class PendingUserDeletionEntity {
     @Column(name = "retry_count")
     private int retryCount;
 
-    @Column(name = "kafka_sent_at")
-    private LocalDateTime kafkaSentAt;
-
-    @Column(name = "chat_processed_at")
-    private LocalDateTime chatProcessedAt;
-
     @CreationTimestamp
     @Column(name = "created_at")
     private LocalDateTime createdAt;
