@@ -79,6 +79,17 @@ encryption:
   pbkdf2:
     secretKey: your-24-char-secret-key!
 
+
+# API Key for Service-to-Service Communication
+service:
+  api:
+    key: your-secure-api-key-here
+
+# Chat Service URL
+chat:
+  service:
+    url: http://localhost:8082
+
 # Server Configuration
 server:
   port: 8080

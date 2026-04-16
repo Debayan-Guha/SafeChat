@@ -23,7 +23,7 @@ public class ChatServiceApiCall {
 
     public ChatServiceApiCall(WebClient.Builder webClientBuilder,
             @Value("${chat.service.url}") String chatServiceUrl,
-            @Value("${apiKey.token}") String apiKeyToken) {
+            @Value("${service.api.key}") String apiKeyToken) {
         this.webClient = webClientBuilder.baseUrl(chatServiceUrl).build();
         this.chatServiceUrl = chatServiceUrl;
         this.apiKeyToken = apiKeyToken;

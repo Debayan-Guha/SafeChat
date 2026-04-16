@@ -36,6 +36,11 @@ jwt:
 encryption:
   secretKey: your-24-char-secret-key!
 
+# API Key for Service-to-Service Communication
+service:
+  api:
+    key: your-secure-api-key-here
+
 # Server Configuration
 server:
   port: 8081
