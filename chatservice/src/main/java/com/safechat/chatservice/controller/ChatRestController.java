@@ -5,7 +5,9 @@ import com.safechat.chatservice.dto.response.ConversationResponseDto;
 import com.safechat.chatservice.dto.response.MessageResponseDto;
 import com.safechat.chatservice.exception.ApplicationException.NotFoundException;
 import com.safechat.chatservice.exception.ApplicationException.ValidationException;
+import com.safechat.chatservice.externalApiCall.UserDeletionStatusDto;
 import com.safechat.chatservice.service.chatService.ChatReadService;
+import com.safechat.chatservice.service.chatService.ChatWriteService;
 import com.safechat.chatservice.utility.api.ApiMessage;
 import com.safechat.chatservice.utility.api.ApiResponseFormatter;
 import com.safechat.chatservice.utility.api.PaginationData;
@@ -26,9 +28,11 @@ import java.util.Map;
 public class ChatRestController {
 
         private final ChatReadService chatReadService;
+        private final ChatWriteService chatWriteService;
 
-        public ChatRestController(ChatReadService chatReadService) {
+        public ChatRestController(ChatReadService chatReadService,ChatWriteService chatWriteService) {
                 this.chatReadService = chatReadService;
+                this.chatWriteService=chatWriteService;
         }
 
         @GetMapping("/conversations")
@@ -110,6 +114,18 @@ public class ChatRestController {
                                 ApiMessage.MESSAGE_FOUND,
                                 data,
                                 pagination));
+        }
+
+        @PostMapping("/internal/user-deletion")
+        public ResponseEntity<ApiResponseFormatter<List<UserDeletionStatusDto>>> handleUserDeletion(
+                        @RequestBody List<String> userIds) {
+
+                List<UserDeletionStatusDto> statusList = chatWriteService.handleUserDeletion(userIds);
+
+                return ResponseEntity.ok(ApiResponseFormatter.formatter(
+                                HttpStatus.OK.value(),
+                                "User deletion processed",
+                                statusList));
         }
 
 }

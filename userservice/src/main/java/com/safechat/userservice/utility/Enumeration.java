@@ -38,11 +38,20 @@ public interface Enumeration {
 
     public interface ScheduledTaskType {
         String DELETE_EXPIRED_ACCOUNTS = "DELETE_EXPIRED_ACCOUNTS";
+        String RETRY_FAILED_USER_DELETIONS = "RETRY_FAILED_USER_DELETIONS";
 
         static boolean isValid(String value) {
             return Stream.of(
-                    DELETE_EXPIRED_ACCOUNTS).anyMatch(type -> type.equals(value));
+                    DELETE_EXPIRED_ACCOUNTS,RETRY_FAILED_USER_DELETIONS).anyMatch(type -> type.equals(value));
         }
+    }
+
+    public interface UserDeletionStatus {
+        String PENDING="PENDING";
+        String API_CALL_FAILED = "API_CALL_FAILED";
+        String CHAT_SUCCESS = "CHAT_SUCCESS";
+        String CHAT_FAILED = "CHAT_FAILED"; 
+        String PERMANENTLY_FAILED="PERMANENTLY_FAILED";
     }
 
 }

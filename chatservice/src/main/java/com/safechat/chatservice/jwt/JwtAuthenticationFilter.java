@@ -2,8 +2,13 @@ package com.safechat.chatservice.jwt;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -25,12 +30,25 @@ import jakarta.servlet.http.HttpServletResponse;
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
+    private static final Logger logger = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
+
+    private static final Map<String, String> VALID_SERVICES = new HashMap<>();
+
+    static {
+        VALID_SERVICES.put("USER-SERVICE", "ROLE_USER-SERVICE");
+        VALID_SERVICES.put("CHAT-SERVICE", "ROLE_CHAT-SERVICE");
+        // Add more services as needed
+    }
+
     private final AesEncryption aesEncryption;
     private final JwtUtils jwtUtils;
+    private final String apiKeyToken;
 
-    JwtAuthenticationFilter(AesEncryption aesEncryption, JwtUtils jwtUtils) {
+    JwtAuthenticationFilter(AesEncryption aesEncryption, JwtUtils jwtUtils,
+            @Value("${service.api.key}") String apiKeyToken) {
         this.aesEncryption = aesEncryption;
         this.jwtUtils = jwtUtils;
+        this.apiKeyToken = apiKeyToken;
     }
 
     @Override
@@ -39,34 +57,77 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         String authorizationHeader = request.getHeader(HttpHeaders.AUTHORIZATION);
 
-        if (authorizationHeader != null && authorizationHeader.startsWith("Bearer ")) {
+        // interservice communication
+        if (authorizationHeader != null && authorizationHeader.startsWith("Service ")) {
 
-            String encryptToken = authorizationHeader.substring(7);
-                try {
-                    if (jwtUtils.tokenVerification(encryptToken)) {
+            try {
+                String token = authorizationHeader.substring(8);
+                String claimedServiceName = request.getHeader("serviceName");
 
-                        Claims claims = jwtUtils.extractAllClaims(aesEncryption.decrypt(encryptToken));
-                        String role = (String) claims.get("role");
+                if (token.equals(apiKeyToken) && claimedServiceName != null) {
 
-                        if (role != null) {
-                            String uid = (String) claims.get("uid");
+                    // SECURITY FIX: Validate service and get its fixed role
+                    String predefinedRole = VALID_SERVICES.get(claimedServiceName);
 
-                            List<GrantedAuthority> authorities = new ArrayList<>();
-                            authorities.add(new SimpleGrantedAuthority("ROLE_" + role));
+                    if (predefinedRole != null) {
+                        logger.debug("Service authentication successful: {}", claimedServiceName);
 
-                            UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(uid, encryptToken,
-                                    authorities);
+                        List<GrantedAuthority> authorities = new ArrayList<>();
+                        // Use fixed role from map, NOT from header
+                        authorities.add(new SimpleGrantedAuthority(predefinedRole));
 
-                            auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                            SecurityContextHolder.getContext().setAuthentication(auth);
-                        }
+                        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
+                                claimedServiceName, null, authorities);
+
+                        auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                        SecurityContextHolder.getContext().setAuthentication(auth);
+                    } else {
+                        logger.warn("Unknown service attempted to authenticate: {}", claimedServiceName);
                     }
-                } catch (Exception e) {
-                    response.setStatus(HttpStatus.UNAUTHORIZED.value());
-                    return;
+                } else {
+                    if (!token.equals(apiKeyToken)) {
+                        logger.error("Invalid API token");
+                    } else {
+                        logger.error("Missing serviceName header");
+                    }
                 }
-        }
-        filterChain.doFilter(request, response); 
-    }
 
+            } catch (Exception e) {
+                logger.error("Failed service to service communication: {}", e.getMessage());
+            }
+
+        } else if (authorizationHeader != null && authorizationHeader.startsWith("Bearer ")) {
+            // User JWT authentication
+            String encryptToken = authorizationHeader.substring(7);
+            try {
+                if (jwtUtils.tokenVerification(encryptToken)) {
+
+                    Claims claims = jwtUtils.extractAllClaims(aesEncryption.decrypt(encryptToken));
+                    String role = (String) claims.get("role");
+
+                    if (role != null) {
+                        String uid = (String) claims.get("uid");
+
+                        List<GrantedAuthority> authorities = new ArrayList<>();
+                        authorities.add(new SimpleGrantedAuthority("ROLE_" + role));
+
+                        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(uid,
+                                encryptToken,
+                                authorities);
+
+                        auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                        SecurityContextHolder.getContext().setAuthentication(auth);
+
+                        logger.debug("User authentication successful: {}", uid);
+                    }
+                }
+            } catch (Exception e) {
+                logger.error("User authentication failed: {}", e.getMessage());
+                response.setStatus(HttpStatus.UNAUTHORIZED.value());
+                return;
+            }
+        }
+
+        filterChain.doFilter(request, response);
+    }
 }

@@ -2,18 +2,10 @@ package com.safechat.userservice.service.userService;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.Optional;
 import java.util.Random;
-import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
-import java.util.stream.Collectors;
-
-import jakarta.persistence.criteria.Predicate;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 
@@ -21,6 +13,7 @@ import com.safechat.userservice.dto.request.OtpReceiveDto;
 import com.safechat.userservice.dto.request.create.UserAccountCreateDto;
 import com.safechat.userservice.dto.request.update.UserProfileUpdateDto;
 import com.safechat.userservice.dto.response.UserResponseDto;
+import com.safechat.userservice.entity.PendingUserDeletionEntity;
 import com.safechat.userservice.entity.UserEntity;
 import com.safechat.userservice.exception.ApplicationException.AlreadyExistsException;
 import com.safechat.userservice.exception.ApplicationException.NotFoundException;
@@ -29,10 +22,12 @@ import com.safechat.userservice.jwt.JwtUtils;
 import com.safechat.userservice.mapper.toDto.UserToDto;
 import com.safechat.userservice.service.CachedService;
 import com.safechat.userservice.service.EmailService;
+import com.safechat.userservice.service.dbService.PendingUserDeletionDbService;
 import com.safechat.userservice.service.dbService.UserDbService;
 import com.safechat.userservice.utility.OperationExecutor;
 import com.safechat.userservice.utility.Enumeration.OtpType;
 import com.safechat.userservice.utility.Enumeration.Status;
+import com.safechat.userservice.utility.Enumeration.UserDeletionStatus;
 import com.safechat.userservice.utility.api.ApiMessage;
 import com.safechat.userservice.utility.encryption.AesEncryption;
 import com.safechat.userservice.utility.encryption.BcryptEncoder;
@@ -45,9 +40,6 @@ public class UserWriteService {
 
     private final String SERVICE_NAME = "UserWriteService";
 
-    private static final int BATCH_SIZE = 1000;
-    private final AtomicBoolean isRunning = new AtomicBoolean(false);
-
     private final UserDbService userDbService;
     private final AesEncryption aesEncryption;
     private final Pbkdf2Encoder pbkdf2Encoder;
@@ -55,13 +47,15 @@ public class UserWriteService {
     private final UserReadService userReadService;
     private final CachedService cachedService;
     private final EmailService emailService;
+    private final PendingUserDeletionDbService pendingUserDeletionDbService;
     private final JwtUtils jwtUtils;
 
     public UserWriteService(UserDbService userDbService,
             AesEncryption aesEncryption, Pbkdf2Encoder pbkdf2Encoder,
             BcryptEncoder bcryptEncoder,
             CachedService cachedService, JwtUtils jwtUtils, EmailService emailService,
-            UserReadService userReadService) {
+            UserReadService userReadService,
+            PendingUserDeletionDbService pendingUserDeletionDbService) {
         this.userDbService = userDbService;
         this.aesEncryption = aesEncryption;
         this.bcryptEncoder = bcryptEncoder;
@@ -70,6 +64,7 @@ public class UserWriteService {
         this.jwtUtils = jwtUtils;
         this.emailService = emailService;
         this.userReadService = userReadService;
+        this.pendingUserDeletionDbService = pendingUserDeletionDbService;
     }
 
     @Transactional
@@ -90,8 +85,29 @@ public class UserWriteService {
         userReadService.isDisplayNameExists(requestDto.getDisplayName());
         userReadService.isEmailExists(requestDto.getEmail().toLowerCase());
 
+        // Generate unique ID with collision check
+        String userId;
+        boolean idExists;
+        do {
+            userId = "USR_" + UUID.randomUUID().toString();
+
+            final String finalUserId = userId; // Create effectively final variable
+
+            // Check if ID already exists in users table
+            Specification<UserEntity> checkUserSpec = (root, query, cb) -> cb.equal(root.get("id"), finalUserId);
+            idExists = userDbService.exists(checkUserSpec);
+
+            // Check if ID already exists in pending_deletions table
+            if (!idExists) {
+                Specification<PendingUserDeletionEntity> checkPendingSpec = (root, query, cb) -> cb
+                        .equal(root.get("userId"), finalUserId);
+                idExists = pendingUserDeletionDbService.exists(checkPendingSpec);
+            }
+
+        } while (idExists);
+
         UserEntity userEntity = UserEntity.builder()
-                .id("USR_" + UUID.randomUUID().toString())
+                .id(userId)
                 .userName(requestDto.getUserName())
                 .displayName(requestDto.getDisplayName())
                 .email(requestDto.getEmail().toLowerCase())
@@ -103,7 +119,6 @@ public class UserWriteService {
         OperationExecutor.dbSave(() -> userDbService.save(userEntity), SERVICE_NAME, METHOD_NAME);
 
         emailService.sendWelcomeEmail(requestDto.getEmail().toLowerCase(), requestDto.getUserName());
-
     }
 
     @Transactional
@@ -134,7 +149,7 @@ public class UserWriteService {
                     .ofNullable(cachedService.getFromCache(cacheKeyBuilder.apply(newEmail), Integer.class))
                     .orElseThrow(() -> new NotFoundException("OTP expired or not found for new email"));
 
-            if (cachedOtp != otp) {
+            if (!cachedOtp.equals(otp)) {
                 throw new ValidationException("OTP mismatch for email update");
             }
 
@@ -284,6 +299,15 @@ public class UserWriteService {
         OperationExecutor.redisRemove(() -> cachedService.deleteCacheByKey(cacheOtpKey.apply(userEntity.getEmail())),
                 SERVICE_NAME, METHOD_NAME);
 
+        // Step 1: Save to pending table FIRST
+        PendingUserDeletionEntity pendingEntity = PendingUserDeletionEntity.builder()
+                .userId(userId)
+                .status(UserDeletionStatus.PENDING)
+                .retryCount(0)
+                .build();
+        OperationExecutor.dbSave(() -> pendingUserDeletionDbService.save(pendingEntity), SERVICE_NAME, METHOD_NAME);
+
+        // Step 2: Delete user from User DB
         OperationExecutor.dbRemove(() -> userDbService.delete(userEntity), SERVICE_NAME, METHOD_NAME);
 
         // Send instant deletion confirmation email
@@ -334,54 +358,6 @@ public class UserWriteService {
             cachedService.deleteCacheByKey(cacheKey);
             throw new RuntimeException("Failed to send OTP. Please try again.", e);
         }
-    }
-
-    public void deleteExpiredAccounts() {
-        if (!isRunning.compareAndSet(false, true)) {
-            return;
-        }
-
-        try {
-            int page = 0;
-
-            while (true) {
-                Pageable pageable = PageRequest.of(page, BATCH_SIZE);
-
-                Specification<UserEntity> spec = (root, query, cb) -> {
-                    Predicate isScheduled = cb.isTrue(root.get("isDeletionScheduled"));
-                    Predicate timePassed = cb.lessThanOrEqualTo(
-                            root.get("deletionScheduledFor"),
-                            LocalDateTime.now());
-                    return cb.and(isScheduled, timePassed);
-                };
-
-                List<UserEntity> usersToDelete = userDbService.getUsers(spec, pageable).getContent();
-
-                if (usersToDelete.isEmpty()) {
-                    break;
-                }
-
-                // Collect user IDs from Set (automatically removes duplicates)
-                Set<String> userIds = usersToDelete.stream()
-                        .map(UserEntity::getId)
-                        .collect(Collectors.toSet());
-
-                // Delete the batch
-                deleteBatch(usersToDelete);
-
-                // AFTER successful deletion, send Kafka event
-                // kafkaProducer.sendUserDeletionEvent(userIds);
-
-                page++;
-            }
-        } finally {
-            isRunning.set(false);
-        }
-    }
-
-    @Transactional
-    public void deleteBatch(List<UserEntity> usersToDelete) {
-        userDbService.deleteAll(usersToDelete);
     }
 
     @Transactional
