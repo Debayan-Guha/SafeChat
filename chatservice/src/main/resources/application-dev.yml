@@ -2,52 +2,16 @@ spring:
   application:
     name: chat-service
   
-  # MongoDB Configuration (updated to non-deprecated properties)
-  mongodb:
-    host: localhost
-    port: 27017
-    uri: mongodb://localhost:27017/chatservice
-    auto-index-creation: true 
-  
-  # Redis Configuration
-  data:
-    redis:
-      host: localhost
-      port: 6379
-      timeout: 2000ms
-  
-  # Kafka Configuration
-  kafka:
-    bootstrap-servers: localhost:9092
-    consumer:
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
-    producer:
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
-      properties:
-        retries: 3
-
-# JWT Configuration
-jwt:
-  secretKey: your-256-bit-secret-key-for-jwt-please-change-in-production
-
-# Encryption Configuration
-encryption:
-  secretKey: your-24-char-secret-key!
-
-# API Key for Service-to-Service Communication
-service:
-  api:
-    key: your-secure-api-key-here
-
-#eureka
-eureka:
-    client:
-        register-with-eureka: true
-        fetch-registry: false
-        service-url:
-            defaultZone: http://localhost:8086/eureka
+  config:
+    import: 
+      - classpath:config/db-dev.yml
+      - classpath:config/redis-dev.yml
+      - classpath:config/kafka-dev.yml
+      - classpath:config/mail-dev.yml
+      - classpath:config/external_api_service-dev.yml
+      - classpath:config/eureka-dev.yml
+      - classpath:config/jwt_secret-dev.yml
+      - classpath:config/encryption_secret-dev.yml
 
 # Server Configuration
 server:

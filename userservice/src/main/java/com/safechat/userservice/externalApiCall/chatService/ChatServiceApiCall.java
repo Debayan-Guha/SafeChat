@@ -22,8 +22,8 @@ public class ChatServiceApiCall {
     private final String serviceName = "USER-SERVICE";
 
     public ChatServiceApiCall(WebClient.Builder webClientBuilder,
-            @Value("${chat.service.url}") String chatServiceUrl,
-            @Value("${service.api.key}") String apiKeyToken) {
+            @Value("${service.chat.url}") String chatServiceUrl,
+            @Value("${service.chat.apikey}") String apiKeyToken) {
         this.webClient = webClientBuilder.baseUrl(chatServiceUrl).build();
         this.chatServiceUrl = chatServiceUrl;
         this.apiKeyToken = apiKeyToken;

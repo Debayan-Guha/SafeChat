@@ -1,0 +1,22 @@
+spring:
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        # Prevent infinite retry on connection failure
+        reconnect.backoff.ms: 10000
+        reconnect.backoff.max.ms: 10000
+        retry.backoff.ms: 10000       # Timeout after 30 seconds
+        retries: 3
+
+    listener:
+      missing-topics-fatal: false  # Don't fail if topic doesn't exist
+      ack-mode: record
+    # Disable auto-creation of topics
+    admin:
+      auto-create: false

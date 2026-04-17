@@ -1,0 +1,4 @@
+service:
+  chat:
+    url: http://localhost:8081
+    apikey: your-secure-api-key-here

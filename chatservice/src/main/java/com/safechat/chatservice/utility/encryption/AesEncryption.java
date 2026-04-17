@@ -15,7 +15,7 @@ public class AesEncryption {
     // Your secret key - must be 16, 24, or 32 characters for AES-128, 192, or 256
     private final String SECRET_KEY; // 24 chars = AES-192
 
-    public AesEncryption(@Value("${encryption.secretKey}") String SECRET_KEY) {
+    public AesEncryption(@Value("${encryption.aes.secretKey}") String SECRET_KEY) {
         this.SECRET_KEY = SECRET_KEY;
     }
 

@@ -45,7 +45,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final String apiKeyToken;
 
     JwtAuthenticationFilter(AesEncryption aesEncryption, JwtUtils jwtUtils,
-            @Value("${service.api.key}") String apiKeyToken) {
+            @Value("${service.apikey}") String apiKeyToken) {
         this.aesEncryption = aesEncryption;
         this.jwtUtils = jwtUtils;
         this.apiKeyToken = apiKeyToken;
