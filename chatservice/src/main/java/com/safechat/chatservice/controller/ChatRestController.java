@@ -13,6 +13,14 @@ import com.safechat.chatservice.utility.api.ApiResponseFormatter;
 import com.safechat.chatservice.utility.api.PaginationData;
 import com.safechat.chatservice.utility.Enumeration.SortDirection;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
+
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -25,20 +33,28 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/chatservice")
+@Tag(name = "Chat Management", description = "APIs for conversation and message management")
 public class ChatRestController {
 
         private final ChatReadService chatReadService;
         private final ChatWriteService chatWriteService;
 
-        public ChatRestController(ChatReadService chatReadService,ChatWriteService chatWriteService) {
+        public ChatRestController(ChatReadService chatReadService, ChatWriteService chatWriteService) {
                 this.chatReadService = chatReadService;
-                this.chatWriteService=chatWriteService;
+                this.chatWriteService = chatWriteService;
         }
 
+        @Operation(summary = "Get all conversations", description = "Retrieves all conversations for the authenticated user with pagination, sorted by last message time.")
+        @ApiResponses(value = {
+                        @ApiResponse(responseCode = "200", description = "Conversations found", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class))),
+                        @ApiResponse(responseCode = "400", description = "Invalid pagination parameters", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class))),
+                        @ApiResponse(responseCode = "404", description = "No conversations found", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class)))
+        })
         @GetMapping("/conversations")
         public ResponseEntity<ApiResponseFormatter<List<ConversationMesssageResponseDto>>> getConversations(
-                        @RequestParam(defaultValue = "0") int page,
-                        @RequestParam(defaultValue = "20") int size) throws NotFoundException {
+                        @Parameter(description = "Page number (1-indexed)", example = "1") @RequestParam(defaultValue = "0") int page,
+                        @Parameter(description = "Number of items per page", example = "20") @RequestParam(defaultValue = "20") int size)
+                        throws NotFoundException {
 
                 if (page < 0 || size <= 0) {
                         throw new ValidationException(ApiMessage.PAGE_VALIDATION_ERROR);
@@ -59,9 +75,14 @@ public class ChatRestController {
                                 pagination));
         }
 
+        @Operation(summary = "Get conversation by ID", description = "Retrieves detailed information of a specific conversation by its ID. User must be a participant.")
+        @ApiResponses(value = {
+                        @ApiResponse(responseCode = "200", description = "Conversation found", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class))),
+                        @ApiResponse(responseCode = "404", description = "Conversation not found", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class)))
+        })
         @GetMapping("/conversations/{conversationId}")
         public ResponseEntity<ApiResponseFormatter<ConversationResponseDto>> getConversationInfoById(
-                        @PathVariable(required = true) String conversationId)
+                        @Parameter(description = "Conversation ID", required = true) @PathVariable(required = true) String conversationId)
                         throws NotFoundException {
 
                 String encryptToken = (String) SecurityContextHolder.getContext()
@@ -76,12 +97,18 @@ public class ChatRestController {
                                 response));
         }
 
+        @Operation(summary = "Get messages in a conversation", description = "Retrieves paginated messages for a conversation. Optionally filter messages before a specific date. Messages are sorted by sendAt descending.")
+        @ApiResponses(value = {
+                        @ApiResponse(responseCode = "200", description = "Messages found", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class))),
+                        @ApiResponse(responseCode = "400", description = "Invalid pagination parameters", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class))),
+                        @ApiResponse(responseCode = "404", description = "Conversation or messages not found", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class)))
+        })
         @GetMapping("/conversations/{conversationId}/messages")
         public ResponseEntity<ApiResponseFormatter<List<MessageResponseDto>>> getConversationMessages(
-                        @PathVariable(required = true) String conversationId,
-                        @RequestParam(defaultValue = "0") int page,
-                        @RequestParam(defaultValue = "50") int size,
-                        @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime beforeDate)
+                        @Parameter(description = "Conversation ID", required = true) @PathVariable(required = true) String conversationId,
+                        @Parameter(description = "Page number (1-indexed)", example = "1") @RequestParam(defaultValue = "0") int page,
+                        @Parameter(description = "Number of items per page", example = "50") @RequestParam(defaultValue = "50") int size,
+                        @Parameter(description = "Fetch messages before this date (ISO 8601 format). If omitted, fetches latest messages.", example = "2024-01-15T10:30:00") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime beforeDate)
                         throws NotFoundException {
 
                 if (page < 0 || size <= 0) {
@@ -116,9 +143,13 @@ public class ChatRestController {
                                 pagination));
         }
 
+        @Operation(summary = "Handle user deletion (internal)", description = "Internal endpoint to clean up all conversations and messages associated with deleted users. Called by user service only.")
+        @ApiResponses(value = {
+                        @ApiResponse(responseCode = "200", description = "User deletion processed", content = @Content(schema = @Schema(implementation = ApiResponseFormatter.class)))
+        })
         @PostMapping("/internal/user-deletion")
         public ResponseEntity<ApiResponseFormatter<List<UserDeletionStatusDto>>> handleUserDeletion(
-                        @RequestBody List<String> userIds) {
+                        @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "List of user IDs to delete", required = true) @RequestBody List<String> userIds) {
 
                 List<UserDeletionStatusDto> statusList = chatWriteService.handleUserDeletion(userIds);
 
