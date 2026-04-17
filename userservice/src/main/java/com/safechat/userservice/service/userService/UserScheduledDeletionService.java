@@ -98,7 +98,7 @@ public class UserScheduledDeletionService {
                 self.deleteBatch(usersToDelete, METHOD_NAME);
 
                 // send confirm delete email
-                usersToDelete.parallelStream().forEach(user -> {
+                usersToDelete.forEach(user -> {
                     emailService.sendAfterDeletionEmail(user.getEmail());
                 });
 
