@@ -183,15 +183,6 @@ public class UserWriteService {
             userEntity.setPassword(bcryptEncoder.bCryptPasswordEncoder().encode(newPassword));
         }
 
-        // Update Keys (both must be provided together)
-        if (requestDto.getKeysUpdate() != null) {
-
-            userEntity.setPublicKey(requestDto.getKeysUpdate().getPublicKey());
-            userEntity
-                    .setEncryptedPrivateKey(
-                            pbkdf2Encoder.pbkd2Encoder().encode(requestDto.getKeysUpdate().getPrivateKey()));
-        }
-
         // Save and Return
         UserEntity updatedUser = OperationExecutor.dbSaveAndReturn(() -> userDbService.save(userEntity), SERVICE_NAME,
                 METHOD_NAME);

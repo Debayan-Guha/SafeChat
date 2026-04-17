@@ -26,9 +26,6 @@ public class UserProfileUpdateDto {
     @Valid
     private PasswordUpdate passwordUpdate;
 
-    @Valid
-    private KeysUpdate keysUpdate;
-
     // Inner class for email update
     @Getter
     @Setter
@@ -56,20 +53,6 @@ public class UserProfileUpdateDto {
 
         @NotBlank(message = "New password is required")
         private String newPassword;
-    }
-
-    // Inner class for key update
-    @Getter
-    @Setter
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class KeysUpdate {
-        @NotBlank(message = "Public key is required")
-        private String publicKey;
-
-        @NotBlank(message = "Private key is required")
-        private String privateKey;
     }
 
 }
