@@ -2,6 +2,13 @@
     "configurations": [
         {
             "type": "java",
+            "name": "DiscoveryserviceApplication",
+            "request": "launch",
+            "mainClass": "com.safechat.discoveryservice.DiscoveryserviceApplication",
+            "projectName": ""
+        },
+        {
+            "type": "java",
             "name": "Spring Boot-UserserviceApplication<userservice>",
             "request": "launch",
             "cwd": "${workspaceFolder}",
@@ -17,6 +24,16 @@
             "cwd": "${workspaceFolder}",
             "mainClass": "com.safechat.chatservice.ChatserviceApplication",
             "projectName": "chatservice",
+            "args": "",
+            "envFile": "${workspaceFolder}/.env"
+        },
+        {
+            "type": "java",
+            "name": "Spring Boot-DiscoveryserviceApplication<discoveryservice>",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "mainClass": "com.safechat.discoveryservice.DiscoveryserviceApplication",
+            "projectName": "discoveryservice",
             "args": "",
             "envFile": "${workspaceFolder}/.env"
         }

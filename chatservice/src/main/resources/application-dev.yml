@@ -1,6 +1,6 @@
 spring:
   application:
-    name: chatservice
+    name: chat-service
   
   # MongoDB Configuration (updated to non-deprecated properties)
   mongodb:
@@ -40,6 +40,14 @@ encryption:
 service:
   api:
     key: your-secure-api-key-here
+
+#eureka
+eureka:
+    client:
+        register-with-eureka: true
+        fetch-registry: false
+        service-url:
+            defaultZone: http://localhost:8086/eureka
 
 # Server Configuration
 server:
