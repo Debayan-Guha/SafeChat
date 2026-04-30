@@ -121,7 +121,7 @@ public class ChatWebSocketService {
                 MessageResponseDto messageResponse = MessageResponseDto.builder()
                                 .conversationId(conversationId)
                                 .senderId(userId)
-                                .encryptedMessage(requestDto.getEncryptedMessage())
+                                .encryptedMessages(requestDto.getEncryptedMessages())
                                 .sendAt(LocalDateTime.now())
                                 .isDelivered(false)
                                 .isEdited(false)
@@ -354,7 +354,7 @@ public class ChatWebSocketService {
                 return deleteNotification;
         }
 
-        public MessageResponseDto editMessage(String encryptToken, String messageId, String encryptedMessage)
+        public MessageResponseDto editMessage(String encryptToken, String messageId, Map<String, String> encryptedMessages)
                         throws NotFoundException {
 
                 final String METHOD_NAME = "editMessage";
@@ -373,7 +373,7 @@ public class ChatWebSocketService {
                                 .orElseThrow(() -> new NotFoundException(
                                                 ApiMessage.MESSAGE_NOT_FOUND));
 
-                message.setEncryptedMessage(encryptedMessage);
+                message.setEncryptedMessages(encryptedMessages);
                 message.setIsEdited(true);
 
                 MessageDocument updated = OperationExecutor.dbSaveAndReturn(
@@ -461,7 +461,7 @@ public class ChatWebSocketService {
                 MessageDocument message = MessageDocument.builder()
                                 .conversationId(savedConversation.getId())
                                 .senderId(userId)
-                                .encryptedMessage(requestDto.getMessageCreate().getEncryptedMessage())
+                                .encryptedMessages(requestDto.getMessageCreate().getEncryptedMessages())
                                 .sendAt(LocalDateTime.now())
                                 .expireAt((requestDto.getMessageCreate().getExpirySeconds() != null
                                                 && requestDto.getMessageCreate().getExpirySeconds() > 0)

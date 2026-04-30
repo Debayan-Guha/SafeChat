@@ -1,6 +1,7 @@
 package com.safechat.chatservice.dto.request.create;
 
 import java.util.List;
+import java.util.Map;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -32,8 +33,8 @@ public class ConversationMesssageCreateRequestDto {
     @Setter
     public static class MessageCreate {
 
-        @NotBlank
-        private String encryptedMessage;
+        @NotNull
+        private Map<@NotBlank String,@NotBlank String> encryptedMessages;
 
         private Integer expirySeconds;
     }

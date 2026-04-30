@@ -11,7 +11,7 @@ public class MessageToDocument {
         return MessageDocument.builder()
                 .conversationId(dto.getConversationId())
                 .senderId(userId)
-                .encryptedMessage(dto.getEncryptedMessage())
+                .encryptedMessages(dto.getEncryptedMessages())
                 .sendAt(LocalDateTime.now())                
                 .isDelivered(false)
                 .isEdited(false)

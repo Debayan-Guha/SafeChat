@@ -122,7 +122,7 @@ public class ChatWebSocketController {
                                 .getAuthentication().getCredentials();
 
                 MessageResponseDto response = chatWebSocketService.editMessage(encryptToken, messageId,
-                                requestDto.getEncryptedMessage());
+                                requestDto.getEncryptedMessages());
 
                 chatKafkaProducer.publishMessageEdit(response);
         }

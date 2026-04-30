@@ -16,7 +16,7 @@ public class MessageResponseDto {
     private String conversationId;
     private String senderId;
     private LocalDateTime sendAt;
-    private String encryptedMessage;
+    private Map<String,String> encryptedMessages;
 
     private Map<String,LocalDateTime> readBy;
     private Boolean isDelivered;
