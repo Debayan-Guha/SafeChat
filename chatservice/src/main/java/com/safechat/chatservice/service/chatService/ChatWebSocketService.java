@@ -24,6 +24,9 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.data.mongodb.core.query.Query;
@@ -33,6 +36,7 @@ import org.springframework.stereotype.Service;
 public class ChatWebSocketService {
 
         private final String SERVICE_NAME = "ChatWebSocketService";
+        private static final Logger log = LoggerFactory.getLogger(ChatWebSocketService.class);
 
         private final ConversationDbService conversationDbService;
         private final MessageDbService messageDbService;
@@ -60,24 +64,35 @@ public class ChatWebSocketService {
                 String decryptToken = aesEncryption.decrypt(encryptToken);
                 String userId = (String) jwtUtils.extractAllClaims(decryptToken).get("uid");
 
+                log.debug("{} - Extracted userId: {}, conversationId: {}", METHOD_NAME, userId, conversationId);
+
                 // Verify conversation exists and user is participant
                 Query conversationQuery = new Query();
                 conversationQuery.addCriteria(Criteria.where("id").is(conversationId)
                                 .and("participants").in(userId)
                                 .and("deletedForUsers").nin(userId));
 
+                log.debug("{} - Querying conversation for userId: {}, conversationId: {}", METHOD_NAME, userId, conversationId);
+
                 ConversationDocument conversation = OperationExecutor.dbGet(
                                 () -> conversationDbService.getConversation(conversationQuery),
                                 SERVICE_NAME, METHOD_NAME)
-                                .orElseThrow(() -> new NotFoundException(ApiMessage.CONVERSATION_NOT_FOUND));
+                                .orElseThrow(() -> {
+                                        log.error("{} - Conversation not found or user not participant, conversationId: {}, userId: {}", METHOD_NAME, conversationId, userId);
+                                        return new NotFoundException(ApiMessage.CONVERSATION_NOT_FOUND);
+                                });
 
                 // Create message
                 MessageDocument message = MessageToDocument.convert(userId, requestDto);
+
+                log.debug("{} - Saving message to DB for conversationId: {}", METHOD_NAME, conversationId);
 
                 // Save message
                 MessageDocument savedMessage = OperationExecutor.dbSaveAndReturn(
                                 () -> messageDbService.save(message),
                                 SERVICE_NAME, METHOD_NAME);
+
+                log.debug("{} - Message saved, messageId: {}, updating conversation lastMessage", METHOD_NAME, savedMessage.getId());
 
                 // Update conversation last message
                 Query updateQuery = new Query();
@@ -89,6 +104,8 @@ public class ChatWebSocketService {
                 OperationExecutor.dbSave(
                                 () -> conversationDbService.save(conversation),
                                 SERVICE_NAME, METHOD_NAME);
+
+                log.info("{} - Message sent, messageId: {}, conversationId: {}, senderId: {}", METHOD_NAME, savedMessage.getId(), conversationId, userId);
 
                 return OperationExecutor.map(() -> MessageToDto.convert(savedMessage), SERVICE_NAME, METHOD_NAME);
         }
@@ -106,16 +123,23 @@ public class ChatWebSocketService {
                 String decryptToken = aesEncryption.decrypt(encryptToken);
                 String userId = (String) jwtUtils.extractAllClaims(decryptToken).get("uid");
 
+                log.debug("{} - Extracted userId: {}, conversationId: {}", METHOD_NAME, userId, conversationId);
+
                 // Verify conversation exists and user is participant
                 Query conversationQuery = new Query();
                 conversationQuery.addCriteria(Criteria.where("id").is(conversationId)
                                 .and("participants").in(userId)
                                 .and("deletedForUsers").nin(userId));
 
+                log.debug("{} - Querying conversation for userId: {}, conversationId: {}", METHOD_NAME, userId, conversationId);
+
                 ConversationDocument conversation = OperationExecutor.dbGet(
                                 () -> conversationDbService.getConversation(conversationQuery),
                                 SERVICE_NAME, METHOD_NAME)
-                                .orElseThrow(() -> new NotFoundException(ApiMessage.CONVERSATION_NOT_FOUND));
+                                .orElseThrow(() -> {
+                                        log.error("{} - Conversation not found or user not participant, conversationId: {}, userId: {}", METHOD_NAME, conversationId, userId);
+                                        return new NotFoundException(ApiMessage.CONVERSATION_NOT_FOUND);
+                                });
 
                 // Create message DTO for WebSocket response (NO DATABASE SAVE)
                 MessageResponseDto messageResponse = MessageResponseDto.builder()
@@ -139,6 +163,8 @@ public class ChatWebSocketService {
                                 () -> conversationDbService.save(conversation),
                                 SERVICE_NAME, METHOD_NAME);
 
+                log.info("{} - Privacy message sent (not persisted), conversationId: {}, senderId: {}", METHOD_NAME, conversationId, userId);
+
                 return messageResponse;
         }
 
@@ -149,16 +175,23 @@ public class ChatWebSocketService {
                 String decryptToken = aesEncryption.decrypt(encryptToken);
                 String userId = (String) jwtUtils.extractAllClaims(decryptToken).get("uid");
 
+                log.debug("{} - Extracted userId: {}, messageId: {}", METHOD_NAME, userId, messageId);
+
                 // Fetch message where user is NOT the sender (i.e. user is the receiver)
                 Query messageQuery = new Query();
                 messageQuery.addCriteria(Criteria.where("id").is(messageId)
                                 .and("senderId").ne(userId)
                                 .and("isDelivered").is(false));
 
+                log.debug("{} - Querying undelivered message, messageId: {}", METHOD_NAME, messageId);
+
                 MessageDocument message = OperationExecutor.dbGet(
                                 () -> messageDbService.getMessage(messageQuery),
                                 SERVICE_NAME, METHOD_NAME)
-                                .orElseThrow(() -> new NotFoundException(ApiMessage.MESSAGE_NOT_FOUND));
+                                .orElseThrow(() -> {
+                                        log.error("{} - Message not found or already delivered, messageId: {}, userId: {}", METHOD_NAME, messageId, userId);
+                                        return new NotFoundException(ApiMessage.MESSAGE_NOT_FOUND);
+                                });
 
                 // Verify user is a participant in the conversation
                 Query conversationQuery = new Query();
@@ -169,7 +202,10 @@ public class ChatWebSocketService {
                 OperationExecutor.dbGet(
                                 () -> conversationDbService.getConversation(conversationQuery),
                                 SERVICE_NAME, METHOD_NAME)
-                                .orElseThrow(() -> new NotFoundException(ApiMessage.CONVERSATION_NOT_FOUND));
+                                .orElseThrow(() -> {
+                                        log.error("{} - Conversation not found for messageId: {}, userId: {}", METHOD_NAME, messageId, userId);
+                                        return new NotFoundException(ApiMessage.CONVERSATION_NOT_FOUND);
+                                });
 
                 // Mark as delivered
                 message.setIsDelivered(true);
@@ -177,6 +213,8 @@ public class ChatWebSocketService {
                 MessageDocument savedMessage = OperationExecutor.dbSaveAndReturn(
                                 () -> messageDbService.save(message),
                                 SERVICE_NAME, METHOD_NAME);
+
+                log.info("{} - Message marked as delivered, messageId: {}, userId: {}", METHOD_NAME, messageId, userId);
 
                 return OperationExecutor.map(() -> MessageToDto.convert(savedMessage), SERVICE_NAME, METHOD_NAME);
         }
@@ -187,16 +225,23 @@ public class ChatWebSocketService {
                 String decryptToken = aesEncryption.decrypt(encryptToken);
                 String userId = (String) jwtUtils.extractAllClaims(decryptToken).get("uid");
 
+                log.debug("{} - Extracted userId: {}, messageId: {}", METHOD_NAME, userId, messageId);
+
                 // Fetch message where user is NOT the sender (i.e. user is the receiver)
                 Query messageQuery = new Query();
                 messageQuery.addCriteria(Criteria.where("id").is(messageId)
                                 .and("senderId").ne(userId)
                                 .and("isRead").is(false));
 
+                log.debug("{} - Querying unread message, messageId: {}", METHOD_NAME, messageId);
+
                 MessageDocument message = OperationExecutor.dbGet(
                                 () -> messageDbService.getMessage(messageQuery),
                                 SERVICE_NAME, METHOD_NAME)
-                                .orElseThrow(() -> new NotFoundException(ApiMessage.MESSAGE_NOT_FOUND));
+                                .orElseThrow(() -> {
+                                        log.error("{} - Message not found or already read, messageId: {}, userId: {}", METHOD_NAME, messageId, userId);
+                                        return new NotFoundException(ApiMessage.MESSAGE_NOT_FOUND);
+                                });
 
                 // Verify user is a participant in the conversation
                 Query conversationQuery = new Query();
@@ -207,7 +252,10 @@ public class ChatWebSocketService {
                 OperationExecutor.dbGet(
                                 () -> conversationDbService.getConversation(conversationQuery),
                                 SERVICE_NAME, METHOD_NAME)
-                                .orElseThrow(() -> new NotFoundException(ApiMessage.CONVERSATION_NOT_FOUND));
+                                .orElseThrow(() -> {
+                                        log.error("{} - Conversation not found for messageId: {}, userId: {}", METHOD_NAME, messageId, userId);
+                                        return new NotFoundException(ApiMessage.CONVERSATION_NOT_FOUND);
+                                });
 
                 // Read implies delivered
                 message.getReadBy().put(userId, LocalDateTime.now());
@@ -215,6 +263,8 @@ public class ChatWebSocketService {
                 MessageDocument savedMessage = OperationExecutor.dbSaveAndReturn(
                                 () -> messageDbService.save(message),
                                 SERVICE_NAME, METHOD_NAME);
+
+                log.info("{} - Message marked as read, messageId: {}, userId: {}", METHOD_NAME, messageId, userId);
 
                 return OperationExecutor.map(() -> MessageToDto.convert(savedMessage), SERVICE_NAME, METHOD_NAME);
         }
@@ -226,6 +276,8 @@ public class ChatWebSocketService {
                 String decryptToken = aesEncryption.decrypt(encryptToken);
                 String userId = (String) jwtUtils.extractAllClaims(decryptToken).get("uid");
 
+                log.debug("{} - userId: {}, conversationId: {}, isTyping: {}", METHOD_NAME, userId, conversationId, isTyping);
+
                 // Verify user is a participant in the conversation
                 Query conversationQuery = new Query();
                 conversationQuery.addCriteria(Criteria.where("id").is(conversationId)
@@ -235,7 +287,10 @@ public class ChatWebSocketService {
                 OperationExecutor.dbGet(
                                 () -> conversationDbService.getConversation(conversationQuery),
                                 SERVICE_NAME, METHOD_NAME)
-                                .orElseThrow(() -> new NotFoundException(ApiMessage.CONVERSATION_NOT_FOUND));
+                                .orElseThrow(() -> {
+                                        log.error("{} - Conversation not found for userId: {}, conversationId: {}", METHOD_NAME, userId, conversationId);
+                                        return new NotFoundException(ApiMessage.CONVERSATION_NOT_FOUND);
+                                });
 
                 // No DB operation - just broadcast typing status
                 Map<String, Object> typingStatus = new HashMap<>();
@@ -254,15 +309,22 @@ public class ChatWebSocketService {
                 String decryptToken = aesEncryption.decrypt(encryptToken);
                 String userId = (String) jwtUtils.extractAllClaims(decryptToken).get("uid");
 
+                log.debug("{} - userId: {}, messageId: {}, deleteType: {}", METHOD_NAME, userId, messageId, deleteType);
+
                 // Fetch message and verify not already deleted for this user
                 Query messageQuery = new Query();
                 messageQuery.addCriteria(Criteria.where("id").is(messageId)
                                 .and("deletedForUsers").nin(userId));
 
+                log.debug("{} - Querying message, messageId: {}", METHOD_NAME, messageId);
+
                 MessageDocument message = OperationExecutor.dbGet(
                                 () -> messageDbService.getMessage(messageQuery),
                                 SERVICE_NAME, METHOD_NAME)
-                                .orElseThrow(() -> new NotFoundException(ApiMessage.MESSAGE_NOT_FOUND));
+                                .orElseThrow(() -> {
+                                        log.error("{} - Message not found or already deleted for userId: {}, messageId: {}", METHOD_NAME, userId, messageId);
+                                        return new NotFoundException(ApiMessage.MESSAGE_NOT_FOUND);
+                                });
 
                 // Verify user is a participant in the conversation
                 Query conversationQuery = new Query();
@@ -273,13 +335,19 @@ public class ChatWebSocketService {
                 ConversationDocument conversation = OperationExecutor.dbGet(
                                 () -> conversationDbService.getConversation(conversationQuery),
                                 SERVICE_NAME, METHOD_NAME)
-                                .orElseThrow(() -> new NotFoundException(ApiMessage.CONVERSATION_NOT_FOUND));
+                                .orElseThrow(() -> {
+                                        log.error("{} - Conversation not found for userId: {}, conversationId: {}", METHOD_NAME, userId, message.getConversationId());
+                                        return new NotFoundException(ApiMessage.CONVERSATION_NOT_FOUND);
+                                });
 
                 if (DeleteType.EVERYONE.equals(deleteType)) {
                         // Only sender can delete for everyone
                         if (!message.getSenderId().equals(userId)) {
+                                log.warn("{} - Non-sender attempted delete for everyone, messageId: {}, userId: {}", METHOD_NAME, messageId, userId);
                                 throw new ValidationException("Only sender can delete for everyone");
                         }
+
+                        log.debug("{} - Hard deleting message for everyone, messageId: {}", METHOD_NAME, messageId);
 
                         // Hard delete - remove from DB entirely
                         Query deleteQuery = new Query();
@@ -316,6 +384,8 @@ public class ChatWebSocketService {
                         }, SERVICE_NAME, METHOD_NAME);
 
                 } else {
+                        log.debug("{} - Soft deleting message for me, messageId: {}, userId: {}", METHOD_NAME, messageId, userId);
+
                         // DELETE_FOR_ME - soft delete, just add to deletedForUsers
                         message.getDeletedForUsers().add(userId);
 
@@ -345,6 +415,8 @@ public class ChatWebSocketService {
                         }, SERVICE_NAME, METHOD_NAME);
                 }
 
+                log.info("{} - Message deleted, messageId: {}, deleteType: {}, userId: {}", METHOD_NAME, messageId, deleteType, userId);
+
                 Map<String, Object> deleteNotification = new HashMap<>();
                 deleteNotification.put("messageId", messageId);
                 deleteNotification.put("conversationId", message.getConversationId());
@@ -362,16 +434,22 @@ public class ChatWebSocketService {
                 String decryptToken = aesEncryption.decrypt(encryptToken);
                 String userId = (String) jwtUtils.extractAllClaims(decryptToken).get("uid");
 
+                log.debug("{} - Extracted userId: {}, messageId: {}", METHOD_NAME, userId, messageId);
+
                 Query query = Query.query(
                                 Criteria.where("id").is(messageId)
                                                 .and("senderId").is(userId));
+
+                log.debug("{} - Querying message for edit, messageId: {}", METHOD_NAME, messageId);
 
                 MessageDocument message = OperationExecutor.dbGet(
                                 () -> messageDbService.getMessage(query),
                                 SERVICE_NAME,
                                 METHOD_NAME)
-                                .orElseThrow(() -> new NotFoundException(
-                                                ApiMessage.MESSAGE_NOT_FOUND));
+                                .orElseThrow(() -> {
+                                        log.error("{} - Message not found or user not sender, messageId: {}, userId: {}", METHOD_NAME, messageId, userId);
+                                        return new NotFoundException(ApiMessage.MESSAGE_NOT_FOUND);
+                                });
 
                 message.setEncryptedMessages(encryptedMessages);
                 message.setIsEdited(true);
@@ -380,6 +458,8 @@ public class ChatWebSocketService {
                                 () -> messageDbService.save(message),
                                 SERVICE_NAME,
                                 METHOD_NAME);
+
+                log.info("{} - Message edited, messageId: {}, userId: {}", METHOD_NAME, messageId, userId);
 
                 return OperationExecutor.map(() -> MessageToDto.convert(updated), SERVICE_NAME, METHOD_NAME);
         }
@@ -391,7 +471,10 @@ public class ChatWebSocketService {
 
                 String decryptToken = aesEncryption.decrypt(encryptToken);
 
+                log.debug("{} - Batch delete requested, count: {}, deleteType: {}", METHOD_NAME, messageIdList == null ? 0 : messageIdList.size(), deleteType);
+
                 if (messageIdList == null || messageIdList.isEmpty()) {
+                        log.warn("{} - Empty messageIdList received", METHOD_NAME);
                         throw new ValidationException("Message IDs list cannot be empty");
                 }
 
@@ -407,9 +490,12 @@ public class ChatWebSocketService {
                                 deletedCount++;
                         } catch (NotFoundException e) {
                                 // Skip if message not found, continue with others
+                                log.warn("{} - Message not found, skipping messageId: {}", METHOD_NAME, messageId);
                                 continue;
                         }
                 }
+
+                log.info("{} - Batch delete completed, deletedCount: {}, totalRequested: {}, deleteType: {}", METHOD_NAME, deletedCount, messageIdList.size(), deleteType);
 
                 Map<String, Object> deleteNotification = new HashMap<>();
                 deleteNotification.put("messageIds", messageIdList);
@@ -428,11 +514,15 @@ public class ChatWebSocketService {
                 String decryptToken = aesEncryption.decrypt(encryptToken);
                 String userId = (String) jwtUtils.extractAllClaims(decryptToken).get("uid");
 
+                log.debug("{} - Extracted userId: {}", METHOD_NAME, userId);
+
                 // Ensure participants list includes the creator
                 List<String> participants = requestDto.getConversationCreate().getParticipantsId();
                 if (!participants.contains(userId)) {
                         participants.add(userId);
                 }
+
+                log.debug("{} - Participants count: {}", METHOD_NAME, participants.size());
 
                 // Check if a conversation already exists between these participants (for
                 // 1-to-1)
@@ -441,21 +531,28 @@ public class ChatWebSocketService {
                         existingConversationQuery.addCriteria(Criteria.where("participants").all(participants)
                                         .and("deletedForUsers").nin(userId));
 
+                        log.debug("{} - Checking for existing conversation between participants", METHOD_NAME);
+
                         OperationExecutor.dbGet(
                                         () -> conversationDbService.getConversation(existingConversationQuery),
                                         SERVICE_NAME, METHOD_NAME)
                                         .ifPresent(c -> {
+                                                log.warn("{} - Conversation already exists for userId: {}", METHOD_NAME, userId);
                                                 throw new ValidationException(ApiMessage.CONVERSATION_ALREADY_EXISTS);
                                         });
 
                 }
 
                 // Build and save the conversation document
-                ConversationDocument conversation = ConversationToDocument.convert(userId,requestDto.getConversationCreate());
+                ConversationDocument conversation = ConversationToDocument.convert(userId, requestDto.getConversationCreate());
+
+                log.debug("{} - Saving new conversation to DB", METHOD_NAME);
 
                 ConversationDocument savedConversation = OperationExecutor.dbSaveAndReturn(
                                 () -> conversationDbService.save(conversation),
                                 SERVICE_NAME, METHOD_NAME);
+
+                log.debug("{} - Conversation saved, conversationId: {}, saving initial message", METHOD_NAME, savedConversation.getId());
 
                 // Build and save the initial message
                 MessageDocument message = MessageDocument.builder()
@@ -477,6 +574,8 @@ public class ChatWebSocketService {
                                 () -> messageDbService.save(message),
                                 SERVICE_NAME, METHOD_NAME);
 
+                log.debug("{} - Initial message saved, messageId: {}, updating conversation", METHOD_NAME, savedMessage.getId());
+
                 // Update conversation with the initial message reference
                 savedConversation.setLastMessageId(savedMessage.getId());
                 savedConversation.setLastMessageAt(savedMessage.getSendAt());
@@ -491,6 +590,8 @@ public class ChatWebSocketService {
                                 .unreadCount(0)
                                 .build();
 
+                log.info("{} - Conversation created, conversationId: {}, messageId: {}, creatorId: {}", METHOD_NAME, savedConversation.getId(), savedMessage.getId(), userId);
+
                 return response;
         }
 
@@ -501,22 +602,32 @@ public class ChatWebSocketService {
                 String decryptToken = aesEncryption.decrypt(encryptToken);
                 String userId = (String) jwtUtils.extractAllClaims(decryptToken).get("uid");
 
+                log.debug("{} - userId: {}, conversationId: {}, deleteType: {}", METHOD_NAME, userId, conversationId, deleteType);
+
                 // Fetch conversation and verify not already deleted for this user
                 Query conversationQuery = new Query();
                 conversationQuery.addCriteria(Criteria.where("id").is(conversationId)
                                 .and("participants").in(userId)
                                 .and("deletedForUsers").nin(userId));
 
+                log.debug("{} - Querying conversation, conversationId: {}", METHOD_NAME, conversationId);
+
                 ConversationDocument conversation = OperationExecutor.dbGet(
                                 () -> conversationDbService.getConversation(conversationQuery),
                                 SERVICE_NAME, METHOD_NAME)
-                                .orElseThrow(() -> new NotFoundException(ApiMessage.CONVERSATION_NOT_FOUND));
+                                .orElseThrow(() -> {
+                                        log.error("{} - Conversation not found for userId: {}, conversationId: {}", METHOD_NAME, userId, conversationId);
+                                        return new NotFoundException(ApiMessage.CONVERSATION_NOT_FOUND);
+                                });
 
                 if (DeleteType.EVERYONE.equals(deleteType)) {
                         // Only creator can delete for everyone
                         if (!conversation.getCreatorId().equals(userId)) {
+                                log.warn("{} - Non-creator attempted delete for everyone, conversationId: {}, userId: {}", METHOD_NAME, conversationId, userId);
                                 throw new ValidationException("Only creator can delete for everyone");
                         }
+
+                        log.debug("{} - Hard deleting all messages and conversation, conversationId: {}", METHOD_NAME, conversationId);
 
                         // Hard delete all messages in conversation
                         Query deleteMessagesQuery = new Query();
@@ -533,6 +644,8 @@ public class ChatWebSocketService {
                                         SERVICE_NAME, METHOD_NAME);
 
                 } else {
+                        log.debug("{} - Soft deleting conversation for me, conversationId: {}, userId: {}", METHOD_NAME, conversationId, userId);
+
                         // DELETE_FOR_ME - soft delete, just add to deletedForUsers
                         conversation.getDeletedForUsers().add(userId);
 
@@ -540,6 +653,8 @@ public class ChatWebSocketService {
                                         () -> conversationDbService.save(conversation),
                                         SERVICE_NAME, METHOD_NAME);
                 }
+
+                log.info("{} - Conversation deleted, conversationId: {}, deleteType: {}, userId: {}", METHOD_NAME, conversationId, deleteType, userId);
 
                 Map<String, Object> deleteNotification = new HashMap<>();
                 deleteNotification.put("conversationId", conversationId);
@@ -555,7 +670,10 @@ public class ChatWebSocketService {
 
                 String decryptToken = aesEncryption.decrypt(encryptToken);
 
+                log.debug("{} - Batch delete requested, count: {}, deleteType: {}", METHOD_NAME, conversationIdList == null ? 0 : conversationIdList.size(), deleteType);
+
                 if (conversationIdList == null || conversationIdList.isEmpty()) {
+                        log.warn("{} - Empty conversationIdList received", METHOD_NAME);
                         throw new ValidationException("Conversation IDs list cannot be empty");
                 }
 
@@ -567,9 +685,12 @@ public class ChatWebSocketService {
                                 deletedCount++;
                         } catch (NotFoundException e) {
                                 // Skip if conversation not found, continue with others
+                                log.warn("{} - Conversation not found, skipping conversationId: {}", METHOD_NAME, conversationId);
                                 continue;
                         }
                 }
+
+                log.info("{} - Batch delete completed, deletedCount: {}, totalRequested: {}, deleteType: {}", METHOD_NAME, deletedCount, conversationIdList.size(), deleteType);
 
                 Map<String, Object> deleteNotification = new HashMap<>();
                 deleteNotification.put("conversationIds", conversationIdList);

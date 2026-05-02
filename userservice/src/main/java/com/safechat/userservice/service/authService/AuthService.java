@@ -7,6 +7,8 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Function;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 
@@ -35,6 +37,7 @@ import jakarta.persistence.criteria.Predicate;
 public class AuthService {
 
     private final String SERVICE_NAME = "AuthService";
+    private static final Logger log = LoggerFactory.getLogger(AuthService.class);
 
     private final UserDbService userDbService;
     private final AdminDbService adminDbService;
@@ -62,6 +65,9 @@ public class AuthService {
         final Function<String, String> cacheKeyBuilder = (userId) -> String.format("user:auth:token:jti:uid:%s",
                 userId);
 
+        log.debug("{} - Login attempt, email: {}, displayName: {}", METHOD_NAME,
+                credentials.getEmail(), credentials.getDisplayName());
+
         Specification<UserEntity> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
 
@@ -77,23 +83,34 @@ public class AuthService {
             return cb.and(predicates.toArray(new Predicate[0]));
         };
 
+        log.debug("{} - Querying DB for active user", METHOD_NAME);
+
         Optional<UserEntity> userEntity = OperationExecutor.dbGet(() -> userDbService.getUser(spec), SERVICE_NAME,
                 METHOD_NAME);
 
         if (!userEntity.isPresent()) {
+            log.warn("{} - User not found or not active for email: {}", METHOD_NAME, credentials.getEmail());
             throw new NotFoundException(ApiMessage.USER_NOT_FOUND);
         }
 
+        log.debug("{} - User found, verifying password for userId: {}", METHOD_NAME, userEntity.get().getId());
+
         if (!bcryptEncoder.bCryptPasswordEncoder().matches(credentials.getPassword(), userEntity.get().getPassword())) {
+            log.warn("{} - Incorrect password for userId: {}", METHOD_NAME, userEntity.get().getId());
             throw new CredentialMisMatchException("Incorrect password");
         }
 
         // Check for existing JTI in cache
+        log.debug("{} - Checking existing JTI in cache for userId: {}", METHOD_NAME, userEntity.get().getId());
+
         Optional<String> cachedJti = Optional.ofNullable(OperationExecutor.redisGet(
                 () -> cachedService.getFromCache(cacheKeyBuilder.apply(userEntity.get().getId()), String.class),
                 SERVICE_NAME, METHOD_NAME));
 
         String jti = cachedJti.orElseGet(() -> UUID.randomUUID().toString());
+
+        log.debug("{} - JTI {} for userId: {}", METHOD_NAME,
+                cachedJti.isPresent() ? "reused from cache" : "generated new", userEntity.get().getId());
 
         // Generate token (no expiry - valid until logout)
         String token = jwtUtils.generateToken(userEntity.get().getId(), userEntity.get().getDisplayName(), "USER", jti);
@@ -103,7 +120,10 @@ public class AuthService {
                     () -> cachedService.saveResponse(cacheKeyBuilder.apply(userEntity.get().getId()), jti,
                             Duration.ofDays(365)),
                     SERVICE_NAME, METHOD_NAME);
+            log.debug("{} - JTI saved to cache for userId: {}", METHOD_NAME, userEntity.get().getId());
         }
+
+        log.info("{} - Login successful for userId: {}", METHOD_NAME, userEntity.get().getId());
 
         return aesEncryption.encrypt(token);
     }
@@ -114,10 +134,14 @@ public class AuthService {
         final Function<String, String> cacheKeyBuilder = (userId) -> String.format("user:auth:token:jti:uid:%s",
                 userId);
 
+        log.debug("{} - Logout initiated", METHOD_NAME);
+
         try {
             String decryptToken = aesEncryption.decrypt(encryptedToken);
             Claims claims = jwtUtils.extractAllClaims(decryptToken);
             String userId = (String) claims.get("uid");
+
+            log.debug("{} - Extracted userId: {}, removing JTI from cache", METHOD_NAME, userId);
 
             // Remove JTI from Redis (invalidates token)
             OperationExecutor.redisRemove(
@@ -125,8 +149,11 @@ public class AuthService {
                     SERVICE_NAME,
                     METHOD_NAME);
 
+            log.info("{} - Logout successful for userId: {}", METHOD_NAME, userId);
+
         } catch (Exception e) {
             // Token might be invalid, still proceed with logout
+            log.warn("{} - Logout attempted with invalid or unreadable token", METHOD_NAME);
         }
     }
 
@@ -134,6 +161,8 @@ public class AuthService {
         final String METHOD_NAME = "adminTokenCreation";
         final Function<String, String> cacheKeyBuilder = (adminId) -> String.format("user:auth:token:jti:admin:uid:%s",
                 adminId);// aid=admin id
+
+        log.debug("{} - Admin login attempt for email: {}", METHOD_NAME, credentials.getEmail());
 
         Specification<AdminEntity> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
@@ -143,24 +172,35 @@ public class AuthService {
             return cb.and(predicates.toArray(new Predicate[0]));
         };
 
+        log.debug("{} - Querying DB for admin", METHOD_NAME);
+
         Optional<AdminEntity> adminEntity = OperationExecutor.dbGet(() -> adminDbService.getAdmin(spec), SERVICE_NAME,
                 METHOD_NAME);
 
         if (!adminEntity.isPresent()) {
+            log.warn("{} - Admin not found for email: {}", METHOD_NAME, credentials.getEmail());
             throw new NotFoundException("Admin not found ");
         }
 
+        log.debug("{} - Admin found, verifying password for adminId: {}", METHOD_NAME, adminEntity.get().getId());
+
         if (!bcryptEncoder.bCryptPasswordEncoder().matches(credentials.getPassword(),
                 adminEntity.get().getPassword())) {
+            log.warn("{} - Incorrect password for adminId: {}", METHOD_NAME, adminEntity.get().getId());
             throw new CredentialMisMatchException("Incorrect password");
         }
 
         // Check for existing JTI in cache
+        log.debug("{} - Checking existing JTI in cache for adminId: {}", METHOD_NAME, adminEntity.get().getId());
+
         Optional<String> cachedJti = Optional.ofNullable(OperationExecutor.redisGet(
                 () -> cachedService.getFromCache(cacheKeyBuilder.apply(adminEntity.get().getId()), String.class),
                 SERVICE_NAME, METHOD_NAME));
 
         String jti = cachedJti.orElseGet(() -> UUID.randomUUID().toString());
+
+        log.debug("{} - JTI {} for adminId: {}", METHOD_NAME,
+                cachedJti.isPresent() ? "reused from cache" : "generated new", adminEntity.get().getId());
 
         // Generate token for admin
         String token = jwtUtils.generateToken(adminEntity.get().getId(), adminEntity.get().getName(), "ADMIN", jti);
@@ -170,7 +210,10 @@ public class AuthService {
                     () -> cachedService.saveResponse(cacheKeyBuilder.apply(adminEntity.get().getId()), jti,
                             Duration.ofDays(365)),
                     SERVICE_NAME, METHOD_NAME);
+            log.debug("{} - JTI saved to cache for adminId: {}", METHOD_NAME, adminEntity.get().getId());
         }
+
+        log.info("{} - Admin login successful for adminId: {}", METHOD_NAME, adminEntity.get().getId());
 
         return aesEncryption.encrypt(token);
     }
@@ -181,10 +224,14 @@ public class AuthService {
         final Function<String, String> cacheKeyBuilder = (adminId) -> String.format("user:auth:token:jti:admin:uid:%s",
                 adminId);
 
+        log.debug("{} - Admin logout initiated", METHOD_NAME);
+
         try {
             String decryptToken = aesEncryption.decrypt(encryptedToken);
             Claims claims = jwtUtils.extractAllClaims(decryptToken);
             String adminId = (String) claims.get("uid");
+
+            log.debug("{} - Extracted adminId: {}, removing JTI from cache", METHOD_NAME, adminId);
 
             // Remove JTI from Redis (invalidates token)
             OperationExecutor.redisRemove(
@@ -192,17 +239,23 @@ public class AuthService {
                     SERVICE_NAME,
                     METHOD_NAME);
 
+            log.info("{} - Admin logout successful for adminId: {}", METHOD_NAME, adminId);
+
         } catch (Exception e) {
             // Token might be invalid, still proceed with logout
+            log.warn("{} - Admin logout attempted with invalid or unreadable token", METHOD_NAME);
         }
     }
 
     public boolean verifyAndValidateToken(String encryptToken) {
         final String METHOD_NAME = "verifyAndValidateToken";
 
+        log.debug("{} - Token verification initiated", METHOD_NAME);
+
         String decryptToken = aesEncryption.decrypt(encryptToken);
 
         if (!jwtUtils.tokenVerification(decryptToken)) {
+            log.warn("{} - Token failed JWT verification", METHOD_NAME);
             return false;
         }
 
@@ -210,6 +263,8 @@ public class AuthService {
         String userId = (String) claims.get("uid");
         String jti = (String) claims.get("jti");
         String role = (String) claims.get("role");
+
+        log.debug("{} - Token claims extracted, userId: {}, role: {}", METHOD_NAME, userId, role);
 
         // Use different cache key based on role
         String cacheKey;
@@ -219,11 +274,16 @@ public class AuthService {
             cacheKey = String.format("user:auth:token:jti:uid:%s", userId);
         }
 
+        log.debug("{} - Checking JTI in cache for userId: {}", METHOD_NAME, userId);
+
         String cachedJti = OperationExecutor.redisGet(
                 () -> cachedService.getFromCache(cacheKey, String.class),
                 SERVICE_NAME, METHOD_NAME);
 
-        return cachedJti != null && cachedJti.equals(jti);
+        boolean isValid = cachedJti != null && cachedJti.equals(jti);
 
+        log.debug("{} - Token validation result: {} for userId: {}", METHOD_NAME, isValid, userId);
+
+        return isValid;
     }
 }

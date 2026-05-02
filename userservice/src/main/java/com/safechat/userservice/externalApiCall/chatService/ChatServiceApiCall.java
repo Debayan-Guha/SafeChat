@@ -1,5 +1,7 @@
 package com.safechat.userservice.externalApiCall.chatService;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
@@ -16,6 +18,8 @@ import java.util.List;
 @Component
 public class ChatServiceApiCall {
 
+    private static final Logger log = LoggerFactory.getLogger(ChatServiceApiCall.class);
+
     private final WebClient webClient;
     private final String chatServiceUrl;
     private final String apiKeyToken;
@@ -30,7 +34,9 @@ public class ChatServiceApiCall {
     }
 
     public ApiResponseFormatter<List<UserDeletionStatusDto>> sendUserDeletionBatch(List<String> userIds) {
-        final String methodName = "sendUserDeletionBatch";
+        final String METHOD_NAME = "sendUserDeletionBatch";
+
+        log.debug("{} - Sending user deletion batch for {} users", METHOD_NAME, userIds.size());
 
         ParameterizedTypeReference<ApiResponseFormatter<List<UserDeletionStatusDto>>> typeRef = new ParameterizedTypeReference<>() {
         };
@@ -54,14 +60,18 @@ public class ChatServiceApiCall {
                 throw new ExternalApiException("Chat service returned null response");
             }
 
+            log.info("{} - User deletion batch completed successfully", METHOD_NAME);
             return response;
 
         } catch (WebClientResponseException.Unauthorized e) {
+            log.error("{} - Authentication failed: {}", METHOD_NAME, e.getMessage());
             throw new ExternalApiException("Chat service authentication failed: Invalid API key");
 
         } catch (WebClientResponseException.Forbidden e) {
+            log.error("{} - Authorization failed: {}", METHOD_NAME, e.getMessage());
             throw new ExternalApiException("Chat service authorization failed: Service not authorized");
 
         }
     }
+
 }

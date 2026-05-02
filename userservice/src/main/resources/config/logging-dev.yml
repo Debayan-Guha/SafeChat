@@ -1,0 +1,4 @@
+# ===== LOGGING CONFIGURATION =====
+logging:
+  loki:
+    url: http://localhost:3100

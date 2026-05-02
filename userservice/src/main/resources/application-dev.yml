@@ -12,6 +12,8 @@ spring:
       - classpath:config/eureka-dev.yml
       - classpath:config/jwt_secret-dev.yml
       - classpath:config/encryption_secret-dev.yml
+      - classpath:config/logging-dev.yml
+      - classpath:config/actuator-dev.yml
 
 # Server Configuration
 server:

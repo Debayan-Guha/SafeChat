@@ -27,6 +27,15 @@ public class SecurityConfig {
                                 .sessionManagement(session -> session
                                                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                                 .authorizeHttpRequests(auth -> auth
+
+                                         .requestMatchers(
+                                                                "/actuator/**",
+                                                                "/actuator/health",
+                                                                "/actuator/info",
+                                                                "/actuator/loggers")
+                                                .permitAll()
+
+
                                                 // Public endpoints (no authentication required)
                                                 .requestMatchers(
                                                                 "/api/v1/userservice/users/account",
@@ -61,6 +70,8 @@ public class SecurityConfig {
                                                                 "/api-docs/**",
                                                                 "/v3/api-docs/**")
                                                 .permitAll()
+
+                                               
 
                                                 .anyRequest().authenticated())
                                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

@@ -12,8 +12,10 @@ import jakarta.mail.internet.MimeMessage;
 @Service
 public class EmailService {
 
+    private final String SERVICE_NAME = "EmailService";
+    private static final Logger log = LoggerFactory.getLogger(EmailService.class);
+
     private final JavaMailSender mailSender;
-    private final Logger logger = LoggerFactory.getLogger(EmailService.class);
 
     public EmailService(JavaMailSender mailSender) {
         this.mailSender = mailSender;
@@ -21,6 +23,11 @@ public class EmailService {
 
     @Async
     public void sendAccountCreationOtp(String toEmail, int otp) {
+        final String METHOD_NAME = "sendAccountCreationOtp";
+
+        log.debug("{} - Preparing to send account creation OTP to email: {}", METHOD_NAME, toEmail);
+        log.debug("{} - OTP value: {} for email: {}", METHOD_NAME, otp, toEmail);
+
         try {
             MimeMessage mimeMessage = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
@@ -103,13 +110,22 @@ public class EmailService {
 
             helper.setText(htmlContent, true);
             mailSender.send(mimeMessage);
+
+            log.info("{} - Account creation OTP sent successfully to email: {}", METHOD_NAME, toEmail);
+
         } catch (Exception e) {
-            logger.warn("Failed to send OTP email to " + toEmail + ": " + e.getMessage());
+            log.warn("{} - Failed to send account creation OTP email to {}: {}", METHOD_NAME, toEmail, e.getMessage());
+            log.debug("{} - Exception details: ", METHOD_NAME, e);
         }
     }
 
     @Async
     public void sendProfileUpdateConfirmation(String toEmail, String displayName) {
+        final String METHOD_NAME = "sendProfileUpdateConfirmation";
+
+        log.debug("{} - Preparing to send profile update confirmation to email: {}", METHOD_NAME, toEmail);
+        log.debug("{} - Display name: {} for email: {}", METHOD_NAME, displayName, toEmail);
+
         try {
             MimeMessage mimeMessage = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
@@ -202,13 +218,23 @@ public class EmailService {
 
             helper.setText(htmlContent, true);
             mailSender.send(mimeMessage);
+
+            log.info("{} - Profile update confirmation sent successfully to email: {}", METHOD_NAME, toEmail);
+
         } catch (Exception e) {
-            logger.warn("Failed to send profile update confirmation email to " + toEmail + ": " + e.getMessage());
+            log.warn("{} - Failed to send profile update confirmation email to {}: {}", METHOD_NAME, toEmail,
+                    e.getMessage());
+            log.debug("{} - Exception details: ", METHOD_NAME, e);
         }
     }
 
     @Async
     public void sendAccountDeletionRequestOtp(String toEmail, int otp) {
+        final String METHOD_NAME = "sendAccountDeletionRequestOtp";
+
+        log.debug("{} - Preparing to send account deletion request OTP to email: {}", METHOD_NAME, toEmail);
+        log.debug("{} - OTP value: {} for email: {}", METHOD_NAME, otp, toEmail);
+
         try {
             MimeMessage mimeMessage = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
@@ -302,13 +328,24 @@ public class EmailService {
 
             helper.setText(htmlContent, true);
             mailSender.send(mimeMessage);
+
+            log.info("{} - Account deletion request OTP sent successfully to email: {}", METHOD_NAME, toEmail);
+
         } catch (Exception e) {
-            logger.warn("Failed to send deletion request OTP email to " + toEmail + ": " + e.getMessage());
+            log.warn("{} - Failed to send account deletion request OTP email to {}: {}", METHOD_NAME, toEmail,
+                    e.getMessage());
+            log.debug("{} - Exception details: ", METHOD_NAME, e);
         }
     }
 
     @Async
     public void sendAccountDeletionInstantOtp(String toEmail, int otp) {
+        final String METHOD_NAME = "sendAccountDeletionInstantOtp";
+
+        log.debug("{} - Preparing to send instant account deletion OTP to email: {}", METHOD_NAME, toEmail);
+        log.debug("{} - OTP value: {} for email: {}", METHOD_NAME, otp, toEmail);
+        log.warn("{} - Sending INSTANT DELETION OTP (IRREVERSIBLE action) to email: {}", METHOD_NAME, toEmail);
+
         try {
             MimeMessage mimeMessage = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
@@ -402,13 +439,23 @@ public class EmailService {
 
             helper.setText(htmlContent, true);
             mailSender.send(mimeMessage);
+
+            log.info("{} - Instant account deletion OTP sent successfully to email: {}", METHOD_NAME, toEmail);
+
         } catch (Exception e) {
-            logger.warn("Failed to send instant deletion OTP email to " + toEmail + ": " + e.getMessage());
+            log.warn("{} - Failed to send instant account deletion OTP email to {}: {}", METHOD_NAME, toEmail,
+                    e.getMessage());
+            log.debug("{} - Exception details: ", METHOD_NAME, e);
         }
     }
 
     @Async
     public void sendWelcomeEmail(String toEmail, String displayName) {
+        final String METHOD_NAME = "sendWelcomeEmail";
+
+        log.debug("{} - Preparing to send welcome email to: {}", METHOD_NAME, toEmail);
+        log.debug("{} - Display name: {} for email: {}", METHOD_NAME, displayName, toEmail);
+
         try {
             MimeMessage mimeMessage = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
@@ -479,13 +526,22 @@ public class EmailService {
 
             helper.setText(htmlContent, true);
             mailSender.send(mimeMessage);
+
+            log.info("{} - Welcome email sent successfully to: {}", METHOD_NAME, toEmail);
+
         } catch (Exception e) {
-            logger.warn("Failed to send welcome email to " + toEmail + ": " + e.getMessage());
+            log.warn("{} - Failed to send welcome email to {}: {}", METHOD_NAME, toEmail, e.getMessage());
+            log.debug("{} - Exception details: ", METHOD_NAME, e);
         }
     }
 
     @Async
     public void sendAfterDeletionEmail(String toEmail) {
+        final String METHOD_NAME = "sendAfterDeletionEmail";
+
+        log.debug("{} - Preparing to send post-deletion email to: {}", METHOD_NAME, toEmail);
+        log.warn("{} - Sending account deletion confirmation email to: {}", METHOD_NAME, toEmail);
+
         try {
             MimeMessage mimeMessage = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
@@ -553,13 +609,22 @@ public class EmailService {
 
             helper.setText(htmlContent, true);
             mailSender.send(mimeMessage);
+
+            log.info("{} - Post-deletion email sent successfully to: {}", METHOD_NAME, toEmail);
+
         } catch (Exception e) {
-            logger.warn("Failed to send post-deletion email to " + toEmail + ": " + e.getMessage());
+            log.warn("{} - Failed to send post-deletion email to {}: {}", METHOD_NAME, toEmail, e.getMessage());
+            log.debug("{} - Exception details: ", METHOD_NAME, e);
         }
     }
 
     @Async
     public void sendPasswordResetOtp(String toEmail, int otp) {
+        final String METHOD_NAME = "sendPasswordResetOtp";
+
+        log.debug("{} - Preparing to send password reset OTP to email: {}", METHOD_NAME, toEmail);
+        log.debug("{} - OTP value: {} for email: {}", METHOD_NAME, otp, toEmail);
+
         try {
             MimeMessage mimeMessage = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, true, "UTF-8");
@@ -651,8 +716,12 @@ public class EmailService {
 
             helper.setText(htmlContent, true);
             mailSender.send(mimeMessage);
+
+            log.info("{} - Password reset OTP sent successfully to email: {}", METHOD_NAME, toEmail);
+
         } catch (Exception e) {
-            logger.warn("Failed to send password reset OTP email to " + toEmail + ": " + e.getMessage());
+            log.warn("{} - Failed to send password reset OTP email to {}: {}", METHOD_NAME, toEmail, e.getMessage());
+            log.debug("{} - Exception details: ", METHOD_NAME, e);
         }
     }
 }

@@ -6,6 +6,8 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Lazy;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.transaction.Transactional;
@@ -29,6 +31,7 @@ import com.safechat.userservice.utility.Enumeration.UserDeletionStatus;
 public class UserScheduledDeletionService {
 
     private final String SERVICE_NAME = "UserScheduledDeletionService";
+    private static final Logger log = LoggerFactory.getLogger(UserScheduledDeletionService.class);
 
     private final AtomicBoolean isRunning_DeleteExpiredAccounts = new AtomicBoolean(false);
     private final AtomicBoolean isRunning_RetryFailedUserDeletions = new AtomicBoolean(false);
@@ -55,8 +58,11 @@ public class UserScheduledDeletionService {
         int BATCH_SIZE = 1000;
 
         if (!isRunning_DeleteExpiredAccounts.compareAndSet(false, true)) {
+            log.debug("{} - Already running, skipping execution", METHOD_NAME);
             return;
         }
+
+        log.info("{} - Started", METHOD_NAME);
 
         try {
             int page = 0;
@@ -72,12 +78,17 @@ public class UserScheduledDeletionService {
                     return cb.and(isScheduled, timePassed);
                 };
 
+                log.debug("{} - Querying DB for expired accounts, page: {}", METHOD_NAME, page);
+
                 List<UserEntity> usersToDelete = OperationExecutor
                         .dbGet(() -> userDbService.getUsers(spec, pageable).getContent(), SERVICE_NAME, METHOD_NAME);
 
                 if (usersToDelete.isEmpty()) {
+                    log.debug("{} - No more expired accounts found, stopping at page: {}", METHOD_NAME, page);
                     break;
                 }
+
+                log.debug("{} - Found {} expired accounts on page: {}", METHOD_NAME, usersToDelete.size(), page);
 
                 Set<String> userIds = usersToDelete.stream()
                         .map(UserEntity::getId)
@@ -91,29 +102,40 @@ public class UserScheduledDeletionService {
                                 .retryCount(0)
                                 .build())
                         .collect(Collectors.toList());
+
+                log.debug("{} - Saving {} records to pending deletion table", METHOD_NAME, entities.size());
                 OperationExecutor.dbSave(() -> pendingUserDeletionDbService.saveAll(entities), SERVICE_NAME,
                         METHOD_NAME);
 
                 // Delete users from User DB
+                log.debug("{} - Deleting batch of {} users from DB", METHOD_NAME, usersToDelete.size());
                 self.deleteBatch(usersToDelete, METHOD_NAME);
 
                 // send confirm delete email
                 usersToDelete.forEach(user -> {
                     emailService.sendAfterDeletionEmail(user.getEmail());
                 });
+                log.debug("{} - Deletion confirmation emails sent for {} users", METHOD_NAME, usersToDelete.size());
 
                 chatService.userDeletionBatch(userIds);
+                log.debug("{} - Chat service notified for batch of {} userIds", METHOD_NAME, userIds.size());
 
                 page++;
             }
+
+            log.info("{} - Completed successfully, processed {} page(s)", METHOD_NAME, page);
+
         } finally {
             isRunning_DeleteExpiredAccounts.set(false);
+            log.debug("{} - Lock released", METHOD_NAME);
         }
     }
 
     @Transactional
     public void deleteBatch(List<UserEntity> usersToDelete, String METHOD_NAME) {
+        log.debug("{} - Deleting batch of {} users", METHOD_NAME, usersToDelete.size());
         OperationExecutor.dbRemove(() -> userDbService.deleteAll(usersToDelete), SERVICE_NAME, METHOD_NAME);
+        log.debug("{} - Batch delete completed", METHOD_NAME);
     }
 
     public void retryFailedUserDeletions() {
@@ -122,8 +144,11 @@ public class UserScheduledDeletionService {
         int BATCH_SIZE = 1000;
 
         if (!isRunning_RetryFailedUserDeletions.compareAndSet(false, true)) {
+            log.debug("{} - Already running, skipping execution", METHOD_NAME);
             return;
         }
+
+        log.info("{} - Started", METHOD_NAME);
 
         try {
             Specification<PendingUserDeletionEntity> spec = (root, query, cb) -> cb.or(
@@ -141,14 +166,19 @@ public class UserScheduledDeletionService {
                 Sort sort = Sort.by(Sort.Direction.ASC, "createdAt");
                 Pageable pageable = PageRequest.of(page, BATCH_SIZE, sort);
 
+                log.debug("{} - Querying pending deletions, page: {}", METHOD_NAME, page);
+
                 List<PendingUserDeletionEntity> stuckRecords = OperationExecutor
                         .dbGet(() -> pendingUserDeletionDbService
                                 .getPendingDeletions(spec, pageable)
                                 .getContent(), SERVICE_NAME, METHOD_NAME);
 
                 if (stuckRecords.isEmpty()) {
+                    log.debug("{} - No more stuck records found, stopping at page: {}", METHOD_NAME, page);
                     break;
                 }
+
+                log.debug("{} - Found {} stuck records on page: {}", METHOD_NAME, stuckRecords.size(), page);
 
                 Set<String> userIds = stuckRecords.stream()
                         .map(PendingUserDeletionEntity::getUserId)
@@ -156,22 +186,33 @@ public class UserScheduledDeletionService {
 
                 // Check which users still exist in the users table
                 Specification<UserEntity> existsSpec = (root, query, cb) -> root.get("id").in(userIds);
+
+                log.debug("{} - Checking which users still exist in DB for {} userIds", METHOD_NAME, userIds.size());
+
                 List<UserEntity> existingUsers = OperationExecutor.dbGet(
                         () -> userDbService.getUsers(existsSpec, Pageable.unpaged()).getContent(), SERVICE_NAME,
                         METHOD_NAME);
 
                 // Delete any that are still present (means step 2 failed previously)
                 if (!existingUsers.isEmpty()) {
+                    log.debug("{} - Found {} users still in DB, retrying delete", METHOD_NAME, existingUsers.size());
                     self.deleteBatch(existingUsers, METHOD_NAME);
+                } else {
+                    log.debug("{} - No leftover users found in DB for this batch", METHOD_NAME);
                 }
 
                 // Call Chat Service
+                log.debug("{} - Notifying chat service for {} userIds", METHOD_NAME, userIds.size());
                 chatService.userDeletionBatch(userIds);
 
                 page++;
             }
+
+            log.info("{} - Completed successfully, processed {} page(s)", METHOD_NAME, page);
+
         } finally {
             isRunning_RetryFailedUserDeletions.set(false);
+            log.debug("{} - Lock released", METHOD_NAME);
         }
     }
 }
