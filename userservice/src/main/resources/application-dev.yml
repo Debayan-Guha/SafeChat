@@ -14,6 +14,7 @@ spring:
       - classpath:config/encryption_secret-dev.yml
       - classpath:config/logging-dev.yml
       - classpath:config/actuator-dev.yml
+      - classpath:config/resilience4j-dev.yml
 
 # Server Configuration
 server:

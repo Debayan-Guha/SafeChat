@@ -1,0 +1,95 @@
+resilience4j:
+
+  circuitbreaker:
+    instances:
+
+      userDb:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 5
+        slowCallDurationThreshold: 3s
+        slowCallRateThreshold: 50
+        ignoreExceptions:
+          - com.safechat.userservice.exception.ApplicationException.NotFoundException
+          - com.safechat.userservice.exception.ApplicationException.AlreadyExistsException
+          - com.safechat.userservice.exception.ApplicationException.ValidationException
+          - com.safechat.userservice.exception.ApplicationException.CredentialMisMatchException
+
+      redisCache:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 5s
+        permittedNumberOfCallsInHalfOpenState: 5
+        slowCallDurationThreshold: 1s
+        slowCallRateThreshold: 50
+
+      chatServiceApi:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 15s
+        permittedNumberOfCallsInHalfOpenState: 3
+        slowCallDurationThreshold: 5s
+        slowCallRateThreshold: 50
+
+  retry:
+    instances:
+
+      userDb:
+        maxAttempts: 3
+        waitDuration: 500ms
+        ignoreExceptions:
+          - com.safechat.userservice.exception.ApplicationException.NotFoundException
+          - com.safechat.userservice.exception.ApplicationException.AlreadyExistsException
+          - com.safechat.userservice.exception.ApplicationException.ValidationException
+          - com.safechat.userservice.exception.ApplicationException.CredentialMisMatchException
+
+      chatServiceApi:
+        maxAttempts: 3
+        waitDuration: 1s
+        ignoreExceptions:
+          - com.safechat.userservice.exception.ApplicationException.NotFoundException
+          - com.safechat.userservice.exception.ApplicationException.ValidationException
+
+  ratelimiter:
+    instances:
+
+      searchUsers:
+        limitForPeriod: 20
+        limitRefreshPeriod: 1s
+        timeoutDuration: 0s
+
+      verifyPrivateKey:
+        limitForPeriod: 5
+        limitRefreshPeriod: 1m
+        timeoutDuration: 0s
+
+      createAccount:
+        limitForPeriod: 3
+        limitRefreshPeriod: 1m
+        timeoutDuration: 0s
+
+      sendOtp:
+        limitForPeriod: 5
+        limitRefreshPeriod: 1m
+        timeoutDuration: 0s
+
+      requestAccountDeletion:
+        limitForPeriod: 3
+        limitRefreshPeriod: 1m
+        timeoutDuration: 0s
+
+      instantAccountDeletion:
+        limitForPeriod: 3
+        limitRefreshPeriod: 1m
+        timeoutDuration: 0s
+
+      tokenCreation:
+        limitForPeriod: 5
+        limitRefreshPeriod: 1m
+        timeoutDuration: 0s
+
+      adminTokenCreation:
+        limitForPeriod: 3
+        limitRefreshPeriod: 1m
+        timeoutDuration: 0s

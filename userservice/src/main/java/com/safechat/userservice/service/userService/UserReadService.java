@@ -27,6 +27,10 @@ import com.safechat.userservice.utility.api.PaginationData;
 import com.safechat.userservice.utility.encryption.AesEncryption;
 import com.safechat.userservice.utility.encryption.Pbkdf2Encoder;
 
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
+import io.github.resilience4j.retry.annotation.Retry;
+
 @Service
 public class UserReadService {
 
@@ -46,6 +50,8 @@ public class UserReadService {
                 this.pbkdf2Encoder = pbkdf2Encoder;
         }
 
+        @CircuitBreaker(name = "userDb")
+        @Retry(name = "userDb")
         public void isDisplayNameExists(String displayName) throws NotFoundException, AlreadyExistsException {
                 final String METHOD_NAME = "isDisplayNameExists";
 
@@ -67,6 +73,8 @@ public class UserReadService {
                 log.debug("{} - DisplayName is available: {}", METHOD_NAME, displayName);
         }
 
+        @CircuitBreaker(name = "userDb")
+        @Retry(name = "userDb")
         public void isEmailExists(String email) throws NotFoundException, AlreadyExistsException {
                 final String METHOD_NAME = "isEmailExists";
 
@@ -88,6 +96,8 @@ public class UserReadService {
                 log.debug("{} - Email is available: {}", METHOD_NAME, email);
         }
 
+        @CircuitBreaker(name = "userDb")
+        @Retry(name = "userDb")
         public UserResponseDto getMyProfile(String encryptToken) throws NotFoundException {
                 final String METHOD_NAME = "getMyProfile";
 
@@ -122,6 +132,9 @@ public class UserReadService {
                 return response;
         }
 
+        @CircuitBreaker(name = "userDb")
+        @Retry(name = "userDb")
+        @RateLimiter(name = "searchUsers")
         public Map<String, Object> searchUsers(String displayName, int page, int size) throws NotFoundException {
                 final String METHOD_NAME = "searchUsers";
 
@@ -174,6 +187,8 @@ public class UserReadService {
                 return result;
         }
 
+        @CircuitBreaker(name = "userDb")
+        @Retry(name = "userDb")
         public UserResponseDto getUserById(String userId) throws NotFoundException {
                 final String METHOD_NAME = "getUserById";
 
@@ -201,6 +216,9 @@ public class UserReadService {
                 return response;
         }
 
+        @CircuitBreaker(name = "userDb")
+        @Retry(name = "userDb")
+        @RateLimiter(name = "verifyPrivateKey")
         public void verifyPrivateKey(String encryptToken, String privateKey)
                         throws NotFoundException, ValidationException {
                 final String METHOD_NAME = "verifyPrivateKey";
@@ -237,6 +255,8 @@ public class UserReadService {
                 log.info("{} - Private key verified successfully for userId: {}", METHOD_NAME, userId);
         }
 
+        @CircuitBreaker(name = "userDb")
+        @Retry(name = "userDb")
         public Map<String, Object> getUsersByAdmin(int page, int size, String status) {
                 final String METHOD_NAME = "getUsersByAdmin";
 
@@ -288,6 +308,8 @@ public class UserReadService {
                 return result;
         }
 
+        @CircuitBreaker(name = "userDb")
+        @Retry(name = "userDb")
         public UserResponseDto getUserByIdByAdmin(String userId) throws NotFoundException {
                 final String METHOD_NAME = "getUserByIdByAdmin";
 

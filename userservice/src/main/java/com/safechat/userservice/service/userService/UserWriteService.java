@@ -36,6 +36,9 @@ import com.safechat.userservice.utility.encryption.AesEncryption;
 import com.safechat.userservice.utility.encryption.BcryptEncoder;
 import com.safechat.userservice.utility.encryption.Pbkdf2Encoder;
 
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
+import io.github.resilience4j.retry.annotation.Retry;
 import jakarta.transaction.Transactional;
 
 @Service
@@ -72,6 +75,9 @@ public class UserWriteService {
     }
 
     @Transactional
+    @CircuitBreaker(name = "userDb")
+    @Retry(name = "userDb")
+    @RateLimiter(name = "createAccount")
     public void createAccount(UserAccountCreateDto requestDto) throws NotFoundException, AlreadyExistsException {
 
         final String METHOD_NAME = "createAccount";
@@ -137,6 +143,8 @@ public class UserWriteService {
     }
 
     @Transactional
+    @CircuitBreaker(name = "userDb")
+    @Retry(name = "userDb")
     public UserResponseDto updateProfile(String encryptToken, UserProfileUpdateDto requestDto)
             throws NotFoundException, AlreadyExistsException, ValidationException {
 
@@ -226,6 +234,8 @@ public class UserWriteService {
     }
 
     @Transactional
+    @CircuitBreaker(name = "userDb")
+    @Retry(name = "userDb")
     public void cancelDeletionRequest(String encryptToken) throws NotFoundException, ValidationException {
         final String METHOD_NAME = "cancelDeletionRequest";
 
@@ -260,6 +270,9 @@ public class UserWriteService {
     }
 
     @Transactional
+    @CircuitBreaker(name = "userDb")
+    @Retry(name = "userDb")
+    @RateLimiter(name = "requestAccountDeletion")
     public void requestAccountDeletion(String encryptToken, OtpReceiveDto requestDto)
             throws NotFoundException, ValidationException {
         final String METHOD_NAME = "requestAccountDeletion";
@@ -312,6 +325,9 @@ public class UserWriteService {
     }
 
     @Transactional
+    @CircuitBreaker(name = "userDb")
+    @Retry(name = "userDb")
+    @RateLimiter(name = "instantAccountDeletion")
     public void instantAccountDeletion(String encryptToken, OtpReceiveDto requestDto)
             throws NotFoundException, ValidationException {
         final String METHOD_NAME = "instantAccountDeletion";
@@ -373,6 +389,9 @@ public class UserWriteService {
         log.debug("{} - Deletion confirmation email sent to: {}", METHOD_NAME, userEntity.getEmail());
     }
 
+    @CircuitBreaker(name = "userDb")
+    @Retry(name = "userDb")
+    @RateLimiter(name = "sendOtp")
     public void sendOtp(String email, String otpType) throws NotFoundException {
         final String METHOD_NAME = "sendOtp";
         final String cacheKey = String.format("user:otp:%s:%s", email.toLowerCase(), otpType);
@@ -420,6 +439,8 @@ public class UserWriteService {
     }
 
     @Transactional
+    @CircuitBreaker(name = "userDb")
+    @Retry(name = "userDb")
     public void blockUserByAdmin(String userIdToBlock) throws NotFoundException, AlreadyExistsException {
         final String METHOD_NAME = "blockUserByAdmin";
 
@@ -448,6 +469,8 @@ public class UserWriteService {
     }
 
     @Transactional
+    @CircuitBreaker(name = "userDb")
+    @Retry(name = "userDb")
     public void unblockUserByAdmin(String userIdToUnblock) throws NotFoundException {
         final String METHOD_NAME = "unblockUserByAdmin";
 
@@ -476,6 +499,8 @@ public class UserWriteService {
     }
 
     @Transactional
+    @CircuitBreaker(name = "userDb")
+    @Retry(name = "userDb")
     public void deleteUserByAdmin(String userId) throws NotFoundException {
         final String METHOD_NAME = "deleteUserByAdmin";
 

@@ -29,6 +29,9 @@ import com.safechat.userservice.utility.api.ApiMessage;
 import com.safechat.userservice.utility.encryption.AesEncryption;
 import com.safechat.userservice.utility.encryption.BcryptEncoder;
 
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
+import io.github.resilience4j.retry.annotation.Retry;
 import io.jsonwebtoken.Claims;
 import jakarta.transaction.Transactional;
 import jakarta.persistence.criteria.Predicate;
@@ -59,6 +62,9 @@ public class AuthService {
         this.cachedService = cachedService;
     }
 
+    @CircuitBreaker(name = "userDb")
+    @Retry(name = "userDb")
+    @RateLimiter(name = "tokenCreation")
     public String tokenCreation(UserLoginDto credentials) throws NotFoundException, CredentialMisMatchException {
 
         final String METHOD_NAME = "tokenCreation";
@@ -129,6 +135,7 @@ public class AuthService {
     }
 
     @Transactional
+    @CircuitBreaker(name = "redisCache")
     public void logout(String encryptedToken) {
         final String METHOD_NAME = "logout";
         final Function<String, String> cacheKeyBuilder = (userId) -> String.format("user:auth:token:jti:uid:%s",
@@ -157,6 +164,9 @@ public class AuthService {
         }
     }
 
+    @CircuitBreaker(name = "userDb")
+    @Retry(name = "userDb")
+    @RateLimiter(name = "adminTokenCreation")
     public String adminTokenCreation(AdminLoginDto credentials) throws NotFoundException, CredentialMisMatchException {
         final String METHOD_NAME = "adminTokenCreation";
         final Function<String, String> cacheKeyBuilder = (adminId) -> String.format("user:auth:token:jti:admin:uid:%s",
@@ -219,6 +229,7 @@ public class AuthService {
     }
 
     @Transactional
+    @CircuitBreaker(name = "redisCache")
     public void adminLogout(String encryptedToken) {
         final String METHOD_NAME = "adminLogout";
         final Function<String, String> cacheKeyBuilder = (adminId) -> String.format("user:auth:token:jti:admin:uid:%s",
@@ -247,6 +258,7 @@ public class AuthService {
         }
     }
 
+    @CircuitBreaker(name = "redisCache")
     public boolean verifyAndValidateToken(String encryptToken) {
         final String METHOD_NAME = "verifyAndValidateToken";
 

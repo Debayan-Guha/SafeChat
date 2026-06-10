@@ -18,6 +18,8 @@ import com.safechat.userservice.service.dbService.AdminDbService;
 import com.safechat.userservice.utility.OperationExecutor;
 import com.safechat.userservice.utility.encryption.BcryptEncoder;
 
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import jakarta.transaction.Transactional;
 
 @Service
@@ -35,6 +37,8 @@ public class AdminService {
     }
 
     @Transactional
+    @CircuitBreaker(name = "userDb")
+    @Retry(name = "userDb")
     public void createAdmin(AdminCreateDto requestDto) throws AlreadyExistsException {
         final String METHOD_NAME = "createAdmin";
 
@@ -74,6 +78,8 @@ public class AdminService {
     }
 
     @Transactional
+    @CircuitBreaker(name = "userDb")
+    @Retry(name = "userDb")
     public void updateAdmin(String adminId, AdminUpdateDto requestDto) throws NotFoundException, ValidationException {
         final String METHOD_NAME = "updateAdmin";
 
